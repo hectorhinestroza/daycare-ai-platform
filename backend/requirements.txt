@@ -1,9 +1,13 @@
 fastapi
 uvicorn
 pydantic
+pydantic-settings
 sqlalchemy
 psycopg2-binary
 openai
 python-dotenv
-pytest
+python-multipart
+twilio
 httpx
+pytest
+pytest-asyncio
