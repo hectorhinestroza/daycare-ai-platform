@@ -21,18 +21,26 @@ For each distinct event mentioned, extract:
 - needs_review: set to true if the information is ambiguous, unclear, or you are uncertain about any field
 - details: a brief description of what was stated
 
-Return a JSON array of event objects. If no events can be extracted, return an empty array.
+You MUST return a JSON object with an "events" key containing an array of all extracted events.
+If no events can be extracted, return {"events": []}.
 
 Example output:
-[
+{"events": [
   {
     "event_type": "MEAL",
     "child_name": "Jason",
     "event_time": null,
     "needs_review": false,
     "details": "Ate most of his mac and cheese at lunch, asked for more apple slices"
+  },
+  {
+    "event_type": "NAP",
+    "child_name": "Jason",
+    "event_time": "2024-01-15T12:00:00",
+    "needs_review": false,
+    "details": "Napped from noon to 1:15pm"
   }
-]"""
+]}"""
 
 
 async def extract_events(
