@@ -100,6 +100,10 @@ async def whatsapp_webhook(
     NumMedia: str = Form("0"),
     MediaUrl0: str = Form(None),
     MediaContentType0: str = Form(None),
+    # Additional Twilio fields we want to capture for debugging
+    MessageSid: str = Form(None),
+    ProfileName: str = Form(None),
+    SmsStatus: str = Form(None),
 ) -> Response:
     """Handle incoming WhatsApp messages from Twilio.
 
@@ -112,9 +116,18 @@ async def whatsapp_webhook(
     body = Body.strip()
     num_media = int(NumMedia)
 
-    logger.info(
-        f"Incoming WhatsApp from {phone}: "
-        f"body='{body[:50]}...' media={num_media}"
+    # === VERBOSE DEBUG LOGGING ===
+    logger.warning(
+        f"=== INCOMING WHATSAPP ===\n"
+        f"  From: {phone}\n"
+        f"  ProfileName: {ProfileName}\n"
+        f"  MessageSid: {MessageSid}\n"
+        f"  Body: '{body}'\n"
+        f"  NumMedia: {num_media}\n"
+        f"  MediaUrl0: {MediaUrl0}\n"
+        f"  MediaContentType0: {MediaContentType0}\n"
+        f"  SmsStatus: {SmsStatus}\n"
+        f"========================="
     )
 
     # 1. Handle text commands

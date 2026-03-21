@@ -1,6 +1,13 @@
+import logging
 from fastapi import FastAPI
 from typing import Dict
 from dotenv import load_dotenv
+
+# Configure logging to show our pipeline logs in console
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+)
 
 # Load .env before anything else
 load_dotenv()
