@@ -79,13 +79,19 @@ async def extract_events(
         raw_content = response.choices[0].message.content
         parsed = json.loads(raw_content)
 
-        # Handle both {"events": [...]} and direct array
+        # Handle all possible GPT-4o response formats:
+        # 1. {"events": [...]}  — array wrapped in object
+        # 2. [...]             — direct array
+        # 3. {"event_type": ...} — single event as bare dict
         if isinstance(parsed, dict) and "events" in parsed:
             raw_events = parsed["events"]
         elif isinstance(parsed, list):
             raw_events = parsed
+        elif isinstance(parsed, dict) and "event_type" in parsed:
+            raw_events = [parsed]
         else:
-            raise ValueError(f"Unexpected response structure: {type(parsed)}")
+            logger.warning(f"Unexpected response structure: {parsed}")
+            raw_events = []
 
         # Validate each event against Pydantic schema
         validated_events: List[BaseEvent] = []
