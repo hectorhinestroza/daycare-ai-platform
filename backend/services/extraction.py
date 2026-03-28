@@ -11,6 +11,18 @@ from schemas.events import BaseEvent, EventType, EventStatus
 
 logger = logging.getLogger(__name__)
 
+# Event types that ALWAYS go to director queue regardless of confidence
+DIRECTOR_ONLY_TYPES = {
+    EventType.INCIDENT_MINOR,
+    EventType.INCIDENT_MAJOR,
+    EventType.BILLING_LATE_PICKUP,
+    EventType.BILLING_EXTRA_HOURS,
+    EventType.BILLING_DROP_IN,
+}
+
+# Confidence threshold — below this, event goes to director
+CONFIDENCE_THRESHOLD = 0.7
+
 SYSTEM_PROMPT = """You are an event extraction system for a daycare center.
 Extract only what is explicitly stated in the transcript. Do not infer or add detail.
 
@@ -18,7 +30,7 @@ For each distinct event mentioned, extract:
 - event_type: one of MEAL, NAP, DIAPER, ACTIVITY, NOTE_TO_PARENT, PICKUP, DROP_OFF, INCIDENT_MINOR, INCIDENT_MAJOR, BILLING_LATE_PICKUP, BILLING_EXTRA_HOURS, BILLING_DROP_IN
 - child_name: the child's name as mentioned
 - event_time: ISO 8601 datetime if mentioned, otherwise null
-- needs_review: set to true if the information is ambiguous, unclear, or you are uncertain about any field
+- confidence_score: a float 0.0–1.0 indicating how confident you are in the extraction accuracy. Set below 0.7 if the child name is unclear, the event type is ambiguous, or details are vague.
 - details: a brief description of what was stated
 
 You MUST return a JSON object with an "events" key containing an array of all extracted events.
@@ -30,14 +42,14 @@ Example output:
     "event_type": "MEAL",
     "child_name": "Jason",
     "event_time": null,
-    "needs_review": false,
+    "confidence_score": 0.95,
     "details": "Ate most of his mac and cheese at lunch, asked for more apple slices"
   },
   {
     "event_type": "NAP",
     "child_name": "Jason",
     "event_time": "2024-01-15T12:00:00",
-    "needs_review": false,
+    "confidence_score": 0.9,
     "details": "Napped from noon to 1:15pm"
   }
 ]}"""
@@ -105,13 +117,25 @@ async def extract_events(
         validated_events: List[BaseEvent] = []
         for raw_event in raw_events:
             try:
+                event_type = EventType(raw_event["event_type"])
+                confidence = float(raw_event.get("confidence_score", 0.5))
+
+                # Determine review tier based on confidence + event type
+                is_director_type = event_type in DIRECTOR_ONLY_TYPES
+                is_low_confidence = confidence < CONFIDENCE_THRESHOLD
+                needs_director = is_director_type or is_low_confidence
+                review_tier = "director" if needs_director else "teacher"
+
                 event = BaseEvent(
                     id=uuid4(),
                     center_id=center_id,
                     child_name=raw_event.get("child_name", child_name or "Unknown"),
-                    event_type=EventType(raw_event["event_type"]),
+                    event_type=event_type,
                     event_time=raw_event.get("event_time"),
-                    needs_review=raw_event.get("needs_review", True),
+                    confidence_score=confidence,
+                    review_tier=review_tier,
+                    needs_director_review=needs_director,
+                    needs_review=needs_director or raw_event.get("needs_review", False),
                     status=EventStatus.PENDING,
                     raw_transcript=transcript,
                     photo_ids=[],

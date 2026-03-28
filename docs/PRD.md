@@ -131,18 +131,54 @@ MIGRATION TOOL  (one-time, not ongoing)
 - All outputs schema-validated before storage; malformed responses rejected
 - Event types: `MEAL`, `NAP`, `DIAPER`, `ACTIVITY`, `NOTE`, `PICKUP`, `DROP_OFF`, `INCIDENT_MINOR`/`MAJOR`, `BILLING_LATE_PICKUP`, `BILLING_EXTRA_HOURS`, `BILLING_DROP_IN`
 
-### Feature 3 — Admin Review Console
+### Feature 3A — Three-Tier Review System
 
+The review system is tiered to prevent director burnout while keeping updates real-time:
+
+| Role | What They See | What They Do |
+|------|--------------||--------------|
+| Teacher | Their own submitted events | First-pass review — one-tap confirm for high-confidence events |
+| Director | Flagged events only (incidents, billing, low-confidence) | Exception-only review — handles the hard stuff |
+| Parent | Approved events in real time | Read-only |
+
+**How it works:**
+1. Teacher sends voice note → AI assigns `confidence_score` (0.0–1.0)
+2. **High confidence** → teacher review → one-tap confirm → auto-publishes to parent
+3. **Low confidence / incidents / billing** → director queue
+4. Director only touches flagged events — keeps promise of real-time without admin burnout
+
+**Review Console features:**
 - Accessible at `app.[domain].com/center/[id]`
 - Event queue grouped by child + date
 - Each card: child name, event type (icon), timestamp, parsed details, photo thumbnails
 - Yellow warning on `needs_review: true` events
-- Admin actions: approve single, approve all for child, inline edit, delete/reject
-- Approved events move to "ready for parent portal" queue
+- Teacher view: approve single, approve all for child, inline edit
+- Director view: flagged events only with reason (incident, billing, low-confidence)
 - Activity log: what was published, by whom, when
 
 > [!CAUTION]
-> **No event reaches parents without explicit admin approval — ever.**
+> **No event reaches parents without explicit human approval (teacher OR director) — ever.**
+
+### Feature 3B — Manage Kids Module (System of Record)
+
+This module is the entity graph the AI uses to resolve voice memos correctly
+(e.g., "Jojo" in Room 2 = Josiah Washington, not Jonathan Smith).
+
+**Child Profile Management:**
+- Basic info: name, DOB, room/classroom, allergies/medical notes, enrollment dates
+- Emergency contacts with permission levels (who can pick up)
+- Parent account links (emails/phones associated)
+- Status: `ACTIVE` | `ENROLLED` | `WAITLIST` | `UNENROLLED`
+
+**Room/Classroom Management:**
+- Create rooms (Toddlers, Pre-K, etc.)
+- Assign teachers to rooms
+- Move kids between rooms (voice memos are scoped to teacher's room by default)
+
+**Enrollment Flow:**
+- Director adds child → system generates magic link → sends to parent
+- Parent completes consent (see `docs/legal_PRD.md` §5) → child goes `ACTIVE`
+- V1 UI: clean table/list view, "+ Add Child" button, search bar, profile edit drawer
 
 ### Feature 4 — AI Narrative Daily Report + Parent Portal ★ CORE DIFFERENTIATOR
 
@@ -152,12 +188,28 @@ MIGRATION TOOL  (one-time, not ongoing)
 | ☐ Nap: 12:00–1:15 PM                           | 📷 3 photos with AI captions                                                                                         |
 | Clinical. Transactional. No soul.              | Warm. Personal. Parents share with grandparents.                                                                     |
 
+#### View 1 — Live Day Feed (Real-Time)
+As events are approved by the teacher throughout the day, parents see them immediately — like a live ticker. Each event is a small card with a timestamp. Photos appear inline. Think of it as a curated group chat for their child's day, but beautiful instead of a chaotic WhatsApp thread.
+
+#### View 2 — End-of-Day Recap (Push Notification)
+At a configurable time (default 5:30 PM), the system sends a push notification or SMS magic link. GPT-4o synthesizes all approved events into an AI narrative paragraph (120–250 words, warm tone). Parents who missed the live updates get the full story at pickup.
+
+#### View 3 — History View (Past Days)
+Calendar strip at top. Tap any past date → full timeline. Used for:
+- Parents reviewing a week's worth of data
+- Checking incident timing ("When exactly did that fall happen?")
+- Pediatrician visits (feeding/nap patterns)
+- **Compliance audit trail** — director can filter by event type + date range, export PDF
+
+**AI Narrative Generation:**
 - System groups all approved events per child/day into one summary object
 - LLM generates: headline (1 sentence), body (120–250 words), tone (upbeat/neutral/needs-attention)
 - Each photo gets a 1-line AI caption; low-confidence falls back to generic ("Art time")
 - Generation latency < 5 seconds p50 per report
 - Admin can override narrative before publishing
-- Parent accesses via magic link (SMS or email); no app install or login in V1
+
+**Parent Access:**
+- Magic link auth via SMS/email — no app install or login in V1
 - Parent can "heart" the report (engagement tracking for churn prediction)
 - WhatsApp push notification to parent on publish
 - **OUT OF SCOPE (V1):** parent comments, two-way teacher-parent messaging
@@ -211,12 +263,15 @@ class BaseEvent(BaseModel):
     child_name: str
     event_type: EventType
     event_time: Optional[datetime]
+    review_tier: Literal["teacher", "director"]  # ★ who must approve
+    confidence_score: float                       # ★ 0.0–1.0
+    needs_director_review: bool                   # ★ True for incidents, billing, low confidence
     needs_review: bool = False
     status: EventStatus = PENDING
     raw_transcript: str
     photo_ids: List[str]
 
-class DailyNarrative(BaseModel):  # ★ NEW
+class DailyNarrative(BaseModel):
     child_name: str
     date: date
     center_id: str
@@ -233,6 +288,19 @@ class BillingEvent(BaseEvent):
     hours_extra: Optional[float]
     amount_usd: Optional[float]     # auto-calculated from center config
     stripe_invoice_id: Optional[str]
+
+class ChildProfile(BaseModel):      # ★ Manage Kids module
+    id: UUID
+    center_id: str
+    name: str
+    dob: date
+    room_id: UUID
+    allergies: Optional[str] = None
+    medical_notes: Optional[str] = None
+    enrollment_date: date
+    status: Literal['ACTIVE', 'ENROLLED', 'WAITLIST', 'UNENROLLED']
+    emergency_contacts: List[EmergencyContact]
+    parent_ids: List[UUID]
 ```
 
 ---

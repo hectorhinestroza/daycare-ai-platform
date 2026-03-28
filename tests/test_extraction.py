@@ -3,7 +3,7 @@
 import json
 import pytest
 from unittest.mock import patch, MagicMock
-from backend.services.extraction import extract_events
+from backend.services.extraction import extract_events, CONFIDENCE_THRESHOLD
 from schemas.events import EventType
 
 
@@ -23,7 +23,7 @@ class TestExtractEvents:
                     "event_type": "MEAL",
                     "child_name": "Jason",
                     "event_time": None,
-                    "needs_review": False,
+                    "confidence_score": 0.95,
                     "details": "Ate mac and cheese for lunch",
                 }
             ]
@@ -39,6 +39,9 @@ class TestExtractEvents:
         assert events[0].child_name == "Jason"
         assert events[0].event_type == EventType.MEAL
         assert events[0].center_id == "center_001"
+        assert events[0].confidence_score == 0.95
+        assert events[0].review_tier == "teacher"
+        assert events[0].needs_director_review is False
         assert events[0].needs_review is False
 
     @pytest.mark.asyncio
@@ -50,9 +53,9 @@ class TestExtractEvents:
         mock_response = MagicMock()
         mock_response.choices[0].message.content = json.dumps({
             "events": [
-                {"event_type": "MEAL", "child_name": "Jason", "needs_review": False},
-                {"event_type": "NAP", "child_name": "Jason", "needs_review": False},
-                {"event_type": "ACTIVITY", "child_name": "Emma", "needs_review": False},
+                {"event_type": "MEAL", "child_name": "Jason", "confidence_score": 0.9},
+                {"event_type": "NAP", "child_name": "Jason", "confidence_score": 0.85},
+                {"event_type": "ACTIVITY", "child_name": "Emma", "confidence_score": 0.8},
             ]
         })
         mock_client.chat.completions.create.return_value = mock_response
@@ -63,17 +66,20 @@ class TestExtractEvents:
         assert events[0].event_type == EventType.MEAL
         assert events[1].event_type == EventType.NAP
         assert events[2].child_name == "Emma"
+        # All high confidence → teacher tier
+        assert all(e.review_tier == "teacher" for e in events)
 
     @pytest.mark.asyncio
     @patch("backend.services.extraction.OpenAI")
-    async def test_ambiguous_event_needs_review(self, mock_openai_class):
+    async def test_low_confidence_goes_to_director(self, mock_openai_class):
+        """Low confidence events go to director queue."""
         mock_client = MagicMock()
         mock_openai_class.return_value = mock_client
 
         mock_response = MagicMock()
         mock_response.choices[0].message.content = json.dumps({
             "events": [
-                {"event_type": "NAP", "child_name": "Someone", "needs_review": True},
+                {"event_type": "NAP", "child_name": "Someone", "confidence_score": 0.3},
             ]
         })
         mock_client.chat.completions.create.return_value = mock_response
@@ -81,7 +87,53 @@ class TestExtractEvents:
         events = await extract_events("someone took a nap", "c1")
 
         assert len(events) == 1
+        assert events[0].confidence_score == 0.3
+        assert events[0].review_tier == "director"
+        assert events[0].needs_director_review is True
         assert events[0].needs_review is True
+
+    @pytest.mark.asyncio
+    @patch("backend.services.extraction.OpenAI")
+    async def test_incident_always_director(self, mock_openai_class):
+        """Incidents always go to director regardless of confidence."""
+        mock_client = MagicMock()
+        mock_openai_class.return_value = mock_client
+
+        mock_response = MagicMock()
+        mock_response.choices[0].message.content = json.dumps({
+            "events": [
+                {"event_type": "INCIDENT_MINOR", "child_name": "Jason", "confidence_score": 0.99},
+            ]
+        })
+        mock_client.chat.completions.create.return_value = mock_response
+
+        events = await extract_events("Jason fell and scraped his knee", "c1")
+
+        assert len(events) == 1
+        assert events[0].confidence_score == 0.99
+        assert events[0].review_tier == "director"  # incident → always director
+        assert events[0].needs_director_review is True
+
+    @pytest.mark.asyncio
+    @patch("backend.services.extraction.OpenAI")
+    async def test_billing_always_director(self, mock_openai_class):
+        """Billing events always go to director regardless of confidence."""
+        mock_client = MagicMock()
+        mock_openai_class.return_value = mock_client
+
+        mock_response = MagicMock()
+        mock_response.choices[0].message.content = json.dumps({
+            "events": [
+                {"event_type": "BILLING_LATE_PICKUP", "child_name": "Jason", "confidence_score": 0.95},
+            ]
+        })
+        mock_client.chat.completions.create.return_value = mock_response
+
+        events = await extract_events("Jason was picked up 30 minutes late", "c1")
+
+        assert len(events) == 1
+        assert events[0].review_tier == "director"  # billing → always director
+        assert events[0].needs_director_review is True
 
     @pytest.mark.asyncio
     @patch("backend.services.extraction.OpenAI")
@@ -108,7 +160,7 @@ class TestExtractEvents:
 
         mock_response = MagicMock()
         mock_response.choices[0].message.content = json.dumps({
-            "events": [{"event_type": "MEAL", "child_name": "Jason", "needs_review": False}]
+            "events": [{"event_type": "MEAL", "child_name": "Jason", "confidence_score": 0.9}]
         })
         mock_client.chat.completions.create.return_value = mock_response
 
@@ -134,7 +186,7 @@ class TestExtractEvents:
         mock_response.choices[0].message.content = json.dumps({
             "events": [
                 {"event_type": "INVALID_TYPE", "child_name": "Test"},
-                {"event_type": "MEAL", "child_name": "Jason", "needs_review": False},
+                {"event_type": "MEAL", "child_name": "Jason", "confidence_score": 0.85},
             ]
         })
         mock_client.chat.completions.create.return_value = mock_response
@@ -143,3 +195,24 @@ class TestExtractEvents:
 
         assert len(events) == 1
         assert events[0].child_name == "Jason"
+
+    @pytest.mark.asyncio
+    @patch("backend.services.extraction.OpenAI")
+    async def test_default_confidence_when_missing(self, mock_openai_class):
+        """When GPT-4o omits confidence_score, default to 0.5 (director queue)."""
+        mock_client = MagicMock()
+        mock_openai_class.return_value = mock_client
+
+        mock_response = MagicMock()
+        mock_response.choices[0].message.content = json.dumps({
+            "events": [
+                {"event_type": "MEAL", "child_name": "Jason"},  # no confidence_score
+            ]
+        })
+        mock_client.chat.completions.create.return_value = mock_response
+
+        events = await extract_events("Jason ate lunch", "c1")
+
+        assert len(events) == 1
+        assert events[0].confidence_score == 0.5
+        assert events[0].review_tier == "director"  # 0.5 < 0.7 threshold

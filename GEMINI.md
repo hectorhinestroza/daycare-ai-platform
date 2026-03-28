@@ -1,9 +1,9 @@
 # Daycare AI Platform — Agent Context
 
 ## Project Purpose
-AI-native childcare operations platform. Voice memos from teachers 
-→ structured events → admin review → AI narrative parent reports.
-Standalone platform. No Brightwheel dependency.
+AI-native childcare operations platform. Voice memos from teachers
+→ structured events → tiered review (teacher first-pass, director exceptions-only)
+→ AI narrative parent reports. Standalone platform. No Brightwheel dependency.
 
 ## Tech Stack
 - Backend: Python 3.11+, FastAPI, PostgreSQL (multi-tenant from day 1)
@@ -15,14 +15,74 @@ Standalone platform. No Brightwheel dependency.
 - Deploy: Railway or Fly.io
 
 ## Architecture Rules (NEVER VIOLATE)
-- NEVER auto-send any event to parents without admin approval
+- NEVER auto-send any event to parents without human approval (teacher OR director)
 - ALL LLM outputs must be Pydantic schema validated before storage
 - Multi-tenant isolation: every DB query must filter by center_id
 - Temperature always 0 for extraction calls (deterministic)
 - needs_review: true for any ambiguous event — never suppress
+- Every event has a `review_tier` (teacher | director) and `confidence_score`
+- COPPA compliance is a hard gate — see `docs/legal_PRD.md`
 
 ## Current Phase
-Week 1 of 10-week build plan. Current feature: Voice Pipeline + WhatsApp Bot.
+Week 1 of 10-week build plan. Issues #1–#3 complete. Next: Issue #4 (PostgreSQL).
+
+## Three-Tier Review System
+
+| Role | What They See | What They Do |
+|------|--------------|--------------|
+| Teacher | Their own submitted events | First-pass review — confirms AI got it right, one-tap approve |
+| Director | Flagged events only (incidents, billing, low-confidence) | Exception-only review — handles the hard stuff |
+| Parent | Approved events in real time | Read-only |
+
+### How it works:
+1. Teacher sends voice note via WhatsApp
+2. AI structures into events, assigns `confidence_score` (0.0–1.0)
+3. **High confidence** (e.g., "Lunch at 12pm — rice and beans") → teacher review → one-tap confirm → auto-publishes to parent
+4. **Low confidence** (ambiguous child name, incident, billing) → director queue
+5. Director only touches the hard stuff — keeps promise of "real-time updates" without admin burnout
+
+### Event Schema Fields:
+```python
+review_tier: Literal["teacher", "director"]  # who must approve
+confidence_score: float                       # 0.0–1.0
+needs_director_review: bool                   # True for incidents, billing, low confidence
+```
+
+## Manage Kids Module (System of Record)
+
+### Child Profile Management
+- Basic info: name, DOB, room/classroom, allergies/medical notes, enrollment dates
+- Emergency contacts with permission levels (who can pick up)
+- Parent account links (emails/phones associated)
+- Status: `ACTIVE` | `ENROLLED` | `WAITLIST` | `UNENROLLED`
+
+### Room/Classroom Management
+- Create rooms (Toddlers, Pre-K, etc.)
+- Assign teachers to rooms
+- Move kids between rooms (voice memos are scoped to teacher's room by default)
+
+### Enrollment Flow
+Director adds child → system generates magic link → parent completes consent → child goes `ACTIVE`
+
+This is the entity graph the AI uses to resolve voice memos correctly
+(e.g., "Jojo" in Room 2 = Josiah Washington, not Jonathan Smith).
+
+## Parent Experience — Three Views
+
+### 1. Live Day Feed (Real-Time)
+As events are approved by teacher throughout the day, parents see them immediately.
+Event cards with timestamps. Photos inline. Like a curated group chat for their child's day.
+
+### 2. End-of-Day Recap (Push Notification)
+Configurable time (default 5:30 PM). GPT-4o synthesizes all approved events into
+AI narrative paragraph. Push notification or SMS magic link to parent.
+
+### 3. History View (Past Days)
+Calendar strip at top. Tap any past date → full timeline. Used for:
+- Reviewing a week's data
+- Checking incident timing ("When did that fall happen?")
+- Pediatrician visits (feeding/nap patterns)
+- Compliance audit trail (director can filter by event type + date range, export PDF)
 
 ## GitHub Issues — 10-Week Build Plan
 Repo: https://github.com/hectorhinestroza/daycare-ai-platform
@@ -30,9 +90,9 @@ Repo: https://github.com/hectorhinestroza/daycare-ai-platform
 ### Weeks 1–2: Voice Pipeline + WhatsApp Bot
 | # | Title | Label | Status |
 |---|-------|-------|--------|
-| 1 | WhatsApp Business API Setup via Twilio | week-1 | 🔲 Open |
-| 2 | Whisper Transcription Endpoint | week-1 | 🔲 Open |
-| 3 | GPT-4o Structured Extraction with Pydantic Schemas | week-1 | 🔲 Open |
+| 1 | WhatsApp Business API Setup via Twilio | week-1 | ✅ Done |
+| 2 | Whisper Transcription Endpoint | week-1 | ✅ Done |
+| 3 | GPT-4o Structured Extraction with Pydantic Schemas | week-1 | ✅ Done |
 | 4 | PostgreSQL Multi-Tenant Schema | week-2 | 🔲 Open |
 | 5 | Basic Logging and Error Handling | week-2 | 🔲 Open |
 
@@ -43,6 +103,19 @@ Repo: https://github.com/hectorhinestroza/daycare-ai-platform
 | 7 | Admin Approve / Edit / Reject Workflow | week-3 | 🔲 Open |
 | 8 | Activity Log and Audit Trail | week-4 | 🔲 Open |
 | 9 | Center Onboarding: Classrooms, Children, Parent Contacts | week-4 | 🔲 Open |
+
+### Weeks 3–4: Legal Engineering (parallel track)
+| # | Title | Label | Status |
+|---|-------|-------|--------|
+| L-1 | Parental Consent Schema + API | legal, week-4 | 🔲 Open |
+| L-2 | Consent Gate Middleware | legal, week-4 | 🔲 Open |
+| L-3 | Photo EXIF Stripping + Secure Storage | legal, week-4 | 🔲 Open |
+| L-4 | Audio Retention + Auto-Delete | legal, week-4 | 🔲 Open |
+| L-5 | AI API Privacy Controls | legal, week-2 | 🔲 Open |
+| L-6 | Data Retention Enforcement Jobs | legal, week-8 | 🔲 Open |
+| L-7 | Parent Consent + Onboarding Flow | legal, week-4 | 🔲 Open |
+| L-8 | Privacy Policy + Terms Pages | legal, week-9 | 🔲 Open |
+| L-9 | Incident Response Plan | legal, week-9 | 🔲 Open |
 
 ### Weeks 5–6: Parent Portal + AI Narrative
 | # | Title | Label | Status |
@@ -67,10 +140,11 @@ Repo: https://github.com/hectorhinestroza/daycare-ai-platform
 
 ## File Structure
 /backend — FastAPI app
-/frontend/console — React Review Console PWA  
+/frontend/console — React Review Console PWA
 /frontend/parent — Next.js Parent Portal
 /schemas — Pydantic models (source of truth)
 /tests — pytest, write tests first
+/docs — PRD, legal PRD, architecture docs
 
 ## Coding Standards
 - Write tests before implementation (TDD)
@@ -83,3 +157,32 @@ Repo: https://github.com/hectorhinestroza/daycare-ai-platform
 - No native iOS/Android apps (PWA only)
 - No attendance tracking, CACFP, staff scheduling
 - No features outside the 10-week PRD until 25 paying centers
+- No facial recognition or biometric identification (triggers IL BIPA)
+
+## Auth
+Magic links only. No passwords. Parent access = magic link per session or
+30-day cookie. Admin access = magic link + email OTP for MFA.
+No password hashing or storage anywhere in the system.
+
+## UI Architecture
+
+TEACHER APP (PWA mobile)
+├── My Pending Events (AI-structured, awaiting my confirmation)
+├── Quick Confirm / Edit (one-tap approve for high-confidence events)
+└── Send New Voice Note / Photo
+
+DIRECTOR CONSOLE (PWA mobile + desktop)
+├── Dashboard (today's activity count, flagged events badge)
+├── Flagged Queue (incidents, billing, low-confidence events ONLY)
+├── Manage Kids
+│   ├── Child List / Search
+│   ├── Child Profile + Edit (name, DOB, room, allergies, emergency contacts)
+│   ├── Rooms / Classroom Assignment (create rooms, assign teachers)
+│   └── Enrollment → Parent Invite Flow (magic link → consent → ACTIVE)
+├── Billing Tab (approved fees, pending invoices, Stripe status)
+└── History / Reports (date range filter, event type filter, export PDF)
+
+PARENT PORTAL (mobile web, magic link)
+├── Today's Live Feed (real-time event cards + photos as approved)
+├── End-of-Day Recap (AI narrative, configurable delivery time, default 5:30 PM)
+└── History (calendar strip → past day timelines → compliance audit)

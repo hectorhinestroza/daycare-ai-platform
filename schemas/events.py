@@ -1,7 +1,7 @@
 from enum import Enum
 from uuid import UUID
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Literal
 from pydantic import BaseModel, Field
 
 class EventType(str, Enum):
@@ -25,6 +25,9 @@ class EventStatus(str, Enum):
 
 class BaseEvent(BaseModel):
     id: UUID
+    review_tier: Literal["teacher", "director"] # who must approve
+    confidence_score: float
+    needs_director_review: bool  # True for incidents, billing, low confidence
     center_id: str
     child_name: str
     event_type: EventType
