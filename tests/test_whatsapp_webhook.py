@@ -60,7 +60,7 @@ class TestVoicePipeline:
                 id=uuid4(),
                 center_id="center_dev_001",
                 child_name="Jason",
-                event_type=EventType.MEAL,
+                event_type=EventType.FOOD,
                 confidence_score=0.95,
                 review_tier="teacher",
                 needs_director_review=False,
@@ -169,13 +169,13 @@ class TestTextExtraction:
                 id=uuid4(),
                 center_id="center_dev_001",
                 child_name="Emma",
-                event_type=EventType.DIAPER,
+                event_type=EventType.POTTY,
                 confidence_score=0.9,
                 review_tier="teacher",
                 needs_director_review=False,
                 needs_review=False,
                 status=EventStatus.PENDING,
-                raw_transcript="Emma had a diaper change at 2pm",
+                raw_transcript="Successful potty for Emma",
             )
         ]
 
@@ -183,7 +183,7 @@ class TestTextExtraction:
             "/webhook/whatsapp",
             data={
                 "From": "+1234567890",
-                "Body": "Emma had a diaper change at 2pm",
+                "Body": "Successful potty for Emma",
                 "NumMedia": "0",
             },
         )

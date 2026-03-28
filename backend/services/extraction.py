@@ -1,4 +1,9 @@
-"""GPT-4o structured event extraction service (Issue #3)."""
+"""GPT-4o structured event extraction service (Issue #3).
+
+Extracts Brightwheel-aligned events from teacher voice memos/text.
+Event types: food, nap, potty, kudos, observation, health_check,
+             absence, note, incident, medication
+"""
 
 import json
 import logging
@@ -7,18 +12,12 @@ from typing import List, Optional
 from openai import OpenAI
 from pydantic import ValidationError
 from backend.config import get_settings
-from schemas.events import BaseEvent, EventType, EventStatus
+from schemas.events import (
+    BaseEvent, EventType, EventStatus,
+    ALWAYS_REVIEW_TYPES,
+)
 
 logger = logging.getLogger(__name__)
-
-# Event types that ALWAYS go to director queue regardless of confidence
-DIRECTOR_ONLY_TYPES = {
-    EventType.INCIDENT_MINOR,
-    EventType.INCIDENT_MAJOR,
-    EventType.BILLING_LATE_PICKUP,
-    EventType.BILLING_EXTRA_HOURS,
-    EventType.BILLING_DROP_IN,
-}
 
 # Confidence threshold — below this, event goes to director
 CONFIDENCE_THRESHOLD = 0.7
@@ -27,7 +26,7 @@ SYSTEM_PROMPT = """You are an event extraction system for a daycare center.
 Extract only what is explicitly stated in the transcript. Do not infer or add detail.
 
 For each distinct event mentioned, extract:
-- event_type: one of MEAL, NAP, DIAPER, ACTIVITY, NOTE_TO_PARENT, PICKUP, DROP_OFF, INCIDENT_MINOR, INCIDENT_MAJOR, BILLING_LATE_PICKUP, BILLING_EXTRA_HOURS, BILLING_DROP_IN
+- event_type: one of "food", "nap", "potty", "kudos", "observation", "health_check", "absence", "note", "incident", "medication"
 - child_name: the child's name as mentioned
 - event_time: ISO 8601 datetime if mentioned, otherwise null
 - confidence_score: a float 0.0–1.0 indicating how confident you are in the extraction accuracy. Set below 0.7 if the child name is unclear, the event type is ambiguous, or details are vague.
@@ -39,18 +38,25 @@ If no events can be extracted, return {"events": []}.
 Example output:
 {"events": [
   {
-    "event_type": "MEAL",
+    "event_type": "food",
     "child_name": "Jason",
     "event_time": null,
     "confidence_score": 0.95,
     "details": "Ate most of his mac and cheese at lunch, asked for more apple slices"
   },
   {
-    "event_type": "NAP",
+    "event_type": "nap",
     "child_name": "Jason",
     "event_time": "2024-01-15T12:00:00",
     "confidence_score": 0.9,
     "details": "Napped from noon to 1:15pm"
+  },
+  {
+    "event_type": "incident",
+    "child_name": "Emma",
+    "event_time": null,
+    "confidence_score": 0.85,
+    "details": "Fell on the playground and scraped her left knee"
   }
 ]}"""
 
@@ -121,9 +127,9 @@ async def extract_events(
                 confidence = float(raw_event.get("confidence_score", 0.5))
 
                 # Determine review tier based on confidence + event type
-                is_director_type = event_type in DIRECTOR_ONLY_TYPES
+                is_always_review = event_type in ALWAYS_REVIEW_TYPES
                 is_low_confidence = confidence < CONFIDENCE_THRESHOLD
-                needs_director = is_director_type or is_low_confidence
+                needs_director = is_always_review or is_low_confidence
                 review_tier = "director" if needs_director else "teacher"
 
                 event = BaseEvent(
@@ -132,10 +138,11 @@ async def extract_events(
                     child_name=raw_event.get("child_name", child_name or "Unknown"),
                     event_type=event_type,
                     event_time=raw_event.get("event_time"),
+                    details=raw_event.get("details"),
                     confidence_score=confidence,
                     review_tier=review_tier,
                     needs_director_review=needs_director,
-                    needs_review=needs_director or raw_event.get("needs_review", False),
+                    needs_review=needs_director,
                     status=EventStatus.PENDING,
                     raw_transcript=transcript,
                     photo_ids=[],
