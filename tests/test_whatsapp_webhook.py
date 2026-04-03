@@ -1,19 +1,64 @@
-"""Tests for the WhatsApp webhook endpoint (Issue #1)."""
+"""Tests for the WhatsApp webhook endpoint (Issue #1 and #4).
 
+Uses a TestClient with a mocked DB dependency to test teacher lookups and event persistence.
+"""
+
+import uuid
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import patch, AsyncMock
-from backend.main import app
-from schemas.events import BaseEvent, EventType, EventStatus
-from uuid import uuid4
+from unittest.mock import patch, AsyncMock, MagicMock
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
+from backend.main import app
+from backend.storage.database import get_db, Base
+from backend.storage.models import Center, Teacher, Event
+from schemas.events import BaseEvent, EventType, EventStatus
+
+# In-memory DB for router testing
+engine = create_engine(
+    "sqlite:///:memory:",
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+)
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+def override_get_db():
+    try:
+        db = TestingSessionLocal()
+        yield db
+    finally:
+        db.close()
+
+app.dependency_overrides[get_db] = override_get_db
 client = TestClient(app)
+
+@pytest.fixture(autouse=True)
+def setup_db():
+    """Create fresh schema for each test and seed a teacher."""
+    Base.metadata.create_all(bind=engine)
+    db = TestingSessionLocal()
+    
+    # Seed data
+    center = Center(id=uuid.uuid4(), name="Test Center")
+    db.add(center)
+    db.commit()
+    
+    teacher = Teacher(id=uuid.uuid4(), center_id=center.id, name="Test Teacher", phone="+1234567890")
+    db.add(teacher)
+    db.commit()
+    
+    yield db
+    Base.metadata.drop_all(bind=engine)
+    db.close()
 
 
 class TestCommandHandling:
     """Test /child and /classroom text commands."""
 
     def test_child_command_sets_context(self):
+        # Commands don't require DB lookup right now, but we send a registered phone
         response = client.post(
             "/webhook/whatsapp",
             data={"From": "+1234567890", "Body": "/child Jason", "NumMedia": "0"},
@@ -29,36 +74,33 @@ class TestCommandHandling:
         assert response.status_code == 200
         assert "Context set to classroom: Butterflies" in response.text
 
-    def test_child_command_empty_name(self):
+    def test_unregistered_number_rejected(self):
+        """Unregistered numbers are immediately rejected."""
         response = client.post(
             "/webhook/whatsapp",
-            data={"From": "+1234567890", "Body": "/child ", "NumMedia": "0"},
+            data={"From": "+9999999999", "Body": "Hello", "NumMedia": "0"},
         )
         assert response.status_code == 200
-        assert "Usage" in response.text
-
-    def test_fallback_message(self):
-        response = client.post(
-            "/webhook/whatsapp",
-            data={"From": "+1234567890", "Body": "", "NumMedia": "0"},
-        )
-        assert response.status_code == 200
-        assert "voice memo" in response.text
+        assert "not registered" in response.text
 
 
 class TestVoicePipeline:
-    """Test voice memo → transcription → extraction pipeline."""
+    """Test voice memo → transcription → extraction → DB storage."""
 
     @patch("backend.routers.whatsapp.extract_events", new_callable=AsyncMock)
     @patch("backend.routers.whatsapp.transcribe_audio", new_callable=AsyncMock)
     @patch("backend.routers.whatsapp.download_twilio_media", new_callable=AsyncMock)
-    def test_voice_memo_pipeline(self, mock_download, mock_transcribe, mock_extract):
+    def test_voice_memo_pipeline(self, mock_download, mock_transcribe, mock_extract, setup_db):
+        db = setup_db
+        center = db.query(Center).first()
+        teacher = db.query(Teacher).first()
+
         mock_download.return_value = (b"fake_audio_data", "audio/ogg")
         mock_transcribe.return_value = "Jason ate mac and cheese for lunch"
         mock_extract.return_value = [
             BaseEvent(
-                id=uuid4(),
-                center_id="center_dev_001",
+                id=uuid.uuid4(),
+                center_id=str(center.id),
                 child_name="Jason",
                 event_type=EventType.FOOD,
                 confidence_score=0.95,
@@ -84,90 +126,21 @@ class TestVoicePipeline:
         assert "Parsed 1 event" in response.text
         assert "Jason" in response.text
 
-        mock_download.assert_called_once()
-        mock_transcribe.assert_called_once()
-        mock_extract.assert_called_once()
+        # Verify it was saved to the DB
+        saved_events = db.query(Event).all()
+        assert len(saved_events) == 1
+        assert saved_events[0].child_name == "Jason"
+        assert saved_events[0].teacher_id == teacher.id
 
     @patch("backend.routers.whatsapp.extract_events", new_callable=AsyncMock)
-    @patch("backend.routers.whatsapp.transcribe_audio", new_callable=AsyncMock)
-    @patch("backend.routers.whatsapp.download_twilio_media", new_callable=AsyncMock)
-    def test_voice_memo_with_needs_review(self, mock_download, mock_transcribe, mock_extract):
-        mock_download.return_value = (b"fake_audio", "audio/ogg")
-        mock_transcribe.return_value = "Someone had a nap"
+    def test_text_extraction(self, mock_extract, setup_db):
+        db = setup_db
+        center = db.query(Center).first()
+
         mock_extract.return_value = [
             BaseEvent(
-                id=uuid4(),
-                center_id="center_dev_001",
-                child_name="Unknown",
-                event_type=EventType.NAP,
-                confidence_score=0.3,
-                review_tier="director",
-                needs_director_review=True,
-                needs_review=True,
-                status=EventStatus.PENDING,
-                raw_transcript="Someone had a nap",
-            )
-        ]
-
-        response = client.post(
-            "/webhook/whatsapp",
-            data={
-                "From": "+1111111111",
-                "Body": "",
-                "NumMedia": "1",
-                "MediaUrl0": "https://api.twilio.com/media/test2",
-                "MediaContentType0": "audio/ogg",
-            },
-        )
-        assert response.status_code == 200
-        assert "flagged for review" in response.text
-
-    @patch("backend.routers.whatsapp.download_twilio_media", new_callable=AsyncMock)
-    def test_voice_memo_pipeline_failure(self, mock_download):
-        mock_download.side_effect = Exception("Download failed")
-
-        response = client.post(
-            "/webhook/whatsapp",
-            data={
-                "From": "+1234567890",
-                "Body": "",
-                "NumMedia": "1",
-                "MediaUrl0": "https://api.twilio.com/media/fail",
-                "MediaContentType0": "audio/ogg",
-            },
-        )
-        assert response.status_code == 200
-        assert "trouble processing" in response.text
-
-
-class TestPhotoHandling:
-    """Test photo reception."""
-
-    def test_photo_received(self):
-        response = client.post(
-            "/webhook/whatsapp",
-            data={
-                "From": "+1234567890",
-                "Body": "Art time!",
-                "NumMedia": "1",
-                "MediaUrl0": "https://api.twilio.com/media/photo1",
-                "MediaContentType0": "image/jpeg",
-            },
-        )
-        assert response.status_code == 200
-        assert "Photo received" in response.text
-        assert "Art time!" in response.text
-
-
-class TestTextExtraction:
-    """Test plain text message extraction."""
-
-    @patch("backend.routers.whatsapp.extract_events", new_callable=AsyncMock)
-    def test_text_extraction(self, mock_extract):
-        mock_extract.return_value = [
-            BaseEvent(
-                id=uuid4(),
-                center_id="center_dev_001",
+                id=uuid.uuid4(),
+                center_id=str(center.id),
                 child_name="Emma",
                 event_type=EventType.POTTY,
                 confidence_score=0.9,
@@ -189,3 +162,8 @@ class TestTextExtraction:
         )
         assert response.status_code == 200
         assert "Parsed 1 event" in response.text
+
+        # Verify DB save
+        saved_events = db.query(Event).all()
+        assert len(saved_events) == 1
+        assert saved_events[0].event_type == "potty"

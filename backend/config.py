@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     # OpenAI
     openai_api_key: str = ""
 
+    # Database
+    database_url: str = "postgresql://localhost/daycare_dev"
+
     # Environment
     environment: str = "development"
 
