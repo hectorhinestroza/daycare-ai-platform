@@ -9,9 +9,11 @@ Usage:
         ...
 """
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base, Session
 from typing import Generator
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, declarative_base, sessionmaker
+
 from backend.config import get_settings
 
 settings = get_settings()

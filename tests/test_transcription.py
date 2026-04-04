@@ -1,7 +1,9 @@
 """Tests for the transcription service (Issue #2)."""
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
+
 from backend.services.transcription import transcribe_audio
 
 

@@ -5,9 +5,11 @@ kudos, observation, health_check, absence, note, incident, medication.
 """
 
 import json
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
-from backend.services.extraction import extract_events, CONFIDENCE_THRESHOLD
+
+from backend.services.extraction import extract_events
 from schemas.events import EventType
 
 

@@ -7,14 +7,18 @@ Event types: food, nap, potty, kudos, observation, health_check,
 
 import json
 import logging
-from uuid import uuid4
 from typing import List, Optional
+from uuid import uuid4
+
 from openai import OpenAI
 from pydantic import ValidationError
+
 from backend.config import get_settings
 from schemas.events import (
-    BaseEvent, EventType, EventStatus,
     ALWAYS_REVIEW_TYPES,
+    BaseEvent,
+    EventStatus,
+    EventType,
 )
 
 logger = logging.getLogger(__name__)
@@ -152,7 +156,7 @@ async def extract_events(
 
     except json.JSONDecodeError as e:
         logger.error(f"GPT-4o returned invalid JSON: {e}")
-        raise ValueError(f"LLM returned invalid JSON: {e}")
+        raise ValueError(f"LLM returned invalid JSON: {e}") from e
     except Exception as e:
         logger.error(f"Event extraction failed: {type(e).__name__}: {e}", exc_info=True)
-        raise
+        raise e

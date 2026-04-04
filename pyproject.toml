@@ -1,0 +1,20 @@
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "I"]
+ignore = [
+    "E402", # Module level import not at top of file (common in scripts with load_dotenv)
+    "B008", # Do not perform function call `Depends` in argument defaults (common in FastAPI)
+    "E501", # Line too long (we have line-length = 120, but some prompts are long)
+]
+
+[tool.pyright]
+include = ["backend", "schemas", "scripts", "tests", "alembic"]
+extraPaths = ["."]
+venvPath = "."
+venv = "venv"
+typeCheckingMode = "basic"
+reportMissingImports = true
+reportMissingTypeStubs = false
+pythonVersion = "3.11"

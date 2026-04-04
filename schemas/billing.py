@@ -6,7 +6,8 @@ These will be removed from EventType in a future refactor when billing
 gets its own pipeline (Issue #13).
 """
 
-from typing import Optional, Literal
+from typing import Literal, Optional
+
 from schemas.events import BaseEvent
 
 

@@ -1,10 +1,11 @@
 """Middleware for structured logging, request IDs, and error handling."""
 
-import uuid
-import time
 import logging
+import time
 import traceback
-from fastapi import Request, Response
+import uuid
+
+from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 

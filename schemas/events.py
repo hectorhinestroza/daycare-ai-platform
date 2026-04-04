@@ -6,12 +6,12 @@ Tier 2: High-stakes events with mandatory review (incident, medication)
 Tier 3: Skip for V1 (photo/video handled as media attachments, not events)
 """
 
-from enum import Enum
-from uuid import UUID
 from datetime import datetime
-from typing import Optional, List, Literal
-from pydantic import BaseModel, Field
+from enum import Enum
+from typing import List, Literal, Optional
+from uuid import UUID
 
+from pydantic import BaseModel, Field
 
 # ─── Event Types ──────────────────────────────────────────────
 

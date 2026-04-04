@@ -4,17 +4,18 @@ Uses a TestClient with a mocked DB dependency to test teacher lookups and event 
 """
 
 import uuid
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import patch, AsyncMock, MagicMock
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from backend.main import app
-from backend.storage.database import get_db, Base
-from backend.storage.models import Center, Teacher, Event
-from schemas.events import BaseEvent, EventType, EventStatus
+from backend.storage.database import Base, get_db
+from backend.storage.models import Center, Event, Teacher
+from schemas.events import BaseEvent, EventStatus, EventType
 
 # In-memory DB for router testing
 engine = create_engine(

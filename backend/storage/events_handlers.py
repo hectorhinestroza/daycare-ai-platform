@@ -5,11 +5,12 @@ This is the data access layer — never bypass it with raw SQL.
 """
 
 import uuid
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from typing import List, Optional
-from sqlalchemy.orm import Session
-from backend.storage.models import Event, Teacher, Child, Center
 
+from sqlalchemy.orm import Session
+
+from backend.storage.models import Child, Event, Teacher
 
 # ─── Event CRUD ───────────────────────────────────────────────
 
@@ -110,7 +111,7 @@ def get_events_pending_director(db: Session, center_id: uuid.UUID) -> List[Event
         .filter(
             Event.center_id == center_id,
             Event.status == "PENDING",
-            Event.needs_director_review == True,
+            Event.needs_director_review,
         )
         .order_by(Event.created_at.desc())
         .all()
@@ -175,7 +176,7 @@ def get_teacher_by_phone(db: Session, phone: str) -> Optional[Teacher]:
     """Resolve phone number → teacher record (for center_id lookup)."""
     return (
         db.query(Teacher)
-        .filter(Teacher.phone == phone, Teacher.is_active == True)
+        .filter(Teacher.phone == phone, Teacher.is_active)
         .first()
     )
 

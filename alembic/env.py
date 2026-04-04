@@ -1,16 +1,18 @@
 """Alembic env.py — configured to use our SQLAlchemy models and config."""
 
 from logging.config import fileConfig
-from sqlalchemy import engine_from_config, pool
-from alembic import context
 
 # Load our app config
 from dotenv import load_dotenv
+from sqlalchemy import engine_from_config, pool
+
+from alembic import context
+
 load_dotenv()
 
+import backend.storage.models  # noqa: F401 — register models with Base
 from backend.config import get_settings
 from backend.storage.database import Base
-import backend.storage.models  # noqa: F401 — register models with Base
 
 config = context.config
 

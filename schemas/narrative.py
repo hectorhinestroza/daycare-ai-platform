@@ -1,6 +1,8 @@
 from datetime import date, datetime
-from typing import Optional, Dict, Literal
+from typing import Dict, Literal, Optional
+
 from pydantic import BaseModel
+
 
 class DailyNarrative(BaseModel):
     child_name: str

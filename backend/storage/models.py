@@ -7,15 +7,22 @@ Tables: centers, admins, teachers, rooms, children, events, photos
 """
 
 import uuid
-from datetime import datetime, date
+from datetime import date, datetime
+
 from sqlalchemy import (
-    Column, String, Text, Float, Boolean, DateTime, Date,
-    ForeignKey, Enum as SAEnum, Integer,
+    Boolean,
+    Column,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    String,
+    Text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-from backend.storage.database import Base
 
+from backend.storage.database import Base
 
 # ─── Centers ──────────────────────────────────────────────────
 

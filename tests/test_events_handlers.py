@@ -4,24 +4,25 @@ Uses SQLite in-memory database for fast tests without Postgres dependency.
 """
 
 import uuid
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from backend.storage.database import Base
-from backend.storage.models import Center, Admin, Teacher, Room, Child, Event
-from backend.storage.events_handlers import (
-    create_event,
-    get_event,
-    get_events_pending_teacher,
-    get_events_pending_director,
-    approve_event,
-    reject_event,
-    get_events_by_child,
-    get_teacher_by_phone,
-    create_event_from_base,
-)
-from schemas.events import BaseEvent, EventType, EventStatus
 
+from backend.storage.database import Base
+from backend.storage.events_handlers import (
+    approve_event,
+    create_event,
+    create_event_from_base,
+    get_event,
+    get_events_by_child,
+    get_events_pending_director,
+    get_events_pending_teacher,
+    get_teacher_by_phone,
+    reject_event,
+)
+from backend.storage.models import Center, Room, Teacher
+from schemas.events import BaseEvent, EventType
 
 # ─── Fixtures ─────────────────────────────────────────────────
 

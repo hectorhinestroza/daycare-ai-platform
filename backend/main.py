@@ -1,8 +1,9 @@
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
 from typing import Dict
+
 from dotenv import load_dotenv
+from fastapi import FastAPI
 
 # Configure structured logging
 logging.basicConfig(
@@ -14,13 +15,13 @@ logger = logging.getLogger(__name__)
 # Load .env before anything else
 load_dotenv()
 
-from backend.routers.whatsapp import router as whatsapp_router
-from backend.storage.database import engine, Base
 from backend.middleware import (
+    GlobalExceptionMiddleware,
     RequestIDMiddleware,
     RequestTimingMiddleware,
-    GlobalExceptionMiddleware,
 )
+from backend.routers.whatsapp import router as whatsapp_router
+from backend.storage.database import Base, engine
 
 
 @asynccontextmanager

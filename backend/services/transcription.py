@@ -2,7 +2,9 @@
 
 import io
 import logging
+
 from openai import OpenAI
+
 from backend.config import get_settings
 
 logger = logging.getLogger(__name__)

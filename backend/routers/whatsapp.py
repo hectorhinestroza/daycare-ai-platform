@@ -2,19 +2,20 @@
 
 import logging
 from typing import Dict, Optional
-from fastapi import APIRouter, Form, Response, Depends
+
+from fastapi import APIRouter, Depends, Form, Response
 from sqlalchemy.orm import Session
 
-from backend.storage.database import get_db
-from backend.services.transcription import transcribe_audio
 from backend.services.extraction import extract_events
-from backend.utils.media import download_twilio_media
+from backend.services.transcription import transcribe_audio
+from backend.storage.database import get_db
 from backend.storage.events_handlers import (
-    get_teacher_by_phone,
     create_event_from_base,
-    get_children_by_center,
     get_child_by_name,
+    get_children_by_center,
+    get_teacher_by_phone,
 )
+from backend.utils.media import download_twilio_media
 
 logger = logging.getLogger(__name__)
 
