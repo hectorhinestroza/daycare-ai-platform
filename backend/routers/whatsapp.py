@@ -9,7 +9,12 @@ from backend.storage.database import get_db
 from backend.services.transcription import transcribe_audio
 from backend.services.extraction import extract_events
 from backend.utils.media import download_twilio_media
-from backend.storage.events_handlers import get_teacher_by_phone, create_event_from_base
+from backend.storage.events_handlers import (
+    get_teacher_by_phone,
+    create_event_from_base,
+    get_children_by_center,
+    get_child_by_name,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +118,8 @@ async def whatsapp_webhook(
     - Text commands (/child, /classroom)
     - Photo messages (stored for later attachment)
     """
-    phone = From
+    # Twilio sends From as "whatsapp:+1XXXXXXXXXX" — normalize to E.164
+    phone = From.replace("whatsapp:", "").strip()
     body = Body.strip()
     num_media = int(NumMedia)
 
@@ -153,16 +159,24 @@ async def whatsapp_webhook(
             ext = "ogg" if "ogg" in content_type else "mp4"
             transcript = await transcribe_audio(audio_bytes, f"voice_memo.{ext}")
             
-            # Extract
+            # 1. Fetch known children for context
+            center_children = get_children_by_center(db, teacher.center_id)
+            known_names = [c.name for c in center_children]
+
+            # 2. Extract
             events = await extract_events(
                 transcript=transcript,
                 center_id=center_id,
                 child_name=child_context,
+                known_children=known_names,
             )
 
-            # Persist to DB
+            # 3. Resolve child_id and Persist
             for base_event in events:
-                create_event_from_base(db, base_event, teacher_id=teacher.id)
+                # Try to find child by name in DB to get child_id
+                child = get_child_by_name(db, teacher.center_id, base_event.child_name)
+                child_id = child.id if child else None
+                create_event_from_base(db, base_event, teacher_id=teacher.id, child_id=child_id)
 
             return _build_twiml_response(_format_event_summary(events))
 
@@ -175,15 +189,22 @@ async def whatsapp_webhook(
     # 4. Handle Text as a Note
     if body and not num_media:
         try:
+            # Extract
+            center_children = get_children_by_center(db, teacher.center_id)
+            known_names = [c.name for c in center_children]
+            
             events = await extract_events(
                 transcript=body,
                 center_id=center_id,
                 child_name=child_context,
+                known_children=known_names,
             )
 
             # Persist to DB
             for base_event in events:
-                create_event_from_base(db, base_event, teacher_id=teacher.id)
+                child = get_child_by_name(db, teacher.center_id, base_event.child_name)
+                child_id = child.id if child else None
+                create_event_from_base(db, base_event, teacher_id=teacher.id, child_id=child_id)
 
             return _build_twiml_response(_format_event_summary(events))
         except Exception as e:

@@ -23,41 +23,30 @@ logger = logging.getLogger(__name__)
 CONFIDENCE_THRESHOLD = 0.7
 
 SYSTEM_PROMPT = """You are an event extraction system for a daycare center.
-Extract only what is explicitly stated in the transcript. Do not infer or add detail.
+Teachers send voice memos and text messages describing what children did during the day.
+Your job is to extract EVERY event mentioned in the transcript.
+
+CRITICAL RULES:
+- ALWAYS extract events. If the transcript mentions any child activity, food, nap, potty, incident, etc., you MUST extract it.
+- ANY name mentioned is a valid child name. Do not skip events because a name seems unusual.
+- Do not add events that were not mentioned. Stick to what was said.
+- If a name is unclear or ambiguous, still extract the event but set confidence_score below 0.7.
+- NEVER return an empty events array if the transcript describes activities.
 
 For each distinct event mentioned, extract:
-- event_type: one of "food", "nap", "potty", "kudos", "observation", "health_check", "absence", "note", "incident", "medication"
-- child_name: the child's name as mentioned
+- event_type: one of "food", "nap", "potty", "kudos", "observation", "health_check", "absence", "note", "activity", "incident", "medication"
+- child_name: the child's name exactly as mentioned in the transcript
 - event_time: ISO 8601 datetime if mentioned, otherwise null
-- confidence_score: a float 0.0–1.0 indicating how confident you are in the extraction accuracy. Set below 0.7 if the child name is unclear, the event type is ambiguous, or details are vague.
-- details: a brief description of what was stated
+- confidence_score: a float 0.0–1.0 indicating extraction accuracy. Set below 0.7 if the child name is unclear, event type is ambiguous, or details are vague.
+- details: a brief factual description of what was stated
 
-You MUST return a JSON object with an "events" key containing an array of all extracted events.
-If no events can be extracted, return {"events": []}.
+Return a JSON object: {"events": [...]}
 
-Example output:
+Example — teacher says "Carlos played basketball, then had a snack and took a nap":
 {"events": [
-  {
-    "event_type": "food",
-    "child_name": "Jason",
-    "event_time": null,
-    "confidence_score": 0.95,
-    "details": "Ate most of his mac and cheese at lunch, asked for more apple slices"
-  },
-  {
-    "event_type": "nap",
-    "child_name": "Jason",
-    "event_time": "2024-01-15T12:00:00",
-    "confidence_score": 0.9,
-    "details": "Napped from noon to 1:15pm"
-  },
-  {
-    "event_type": "incident",
-    "child_name": "Emma",
-    "event_time": null,
-    "confidence_score": 0.85,
-    "details": "Fell on the playground and scraped her left knee"
-  }
+  {"event_type": "activity", "child_name": "Carlos", "event_time": null, "confidence_score": 0.9, "details": "Played basketball"},
+  {"event_type": "food", "child_name": "Carlos", "event_time": null, "confidence_score": 0.85, "details": "Had a snack"},
+  {"event_type": "nap", "child_name": "Carlos", "event_time": null, "confidence_score": 0.9, "details": "Took a nap"}
 ]}"""
 
 
@@ -65,6 +54,7 @@ async def extract_events(
     transcript: str,
     center_id: str,
     child_name: Optional[str] = None,
+    known_children: Optional[List[str]] = None,
 ) -> List[BaseEvent]:
     """Extract structured events from a transcript using GPT-4o.
 
@@ -72,12 +62,10 @@ async def extract_events(
         transcript: Raw transcript text from Whisper
         center_id: Center ID for multi-tenant isolation
         child_name: Optional pre-set child context from /child command
+        known_children: Optional list of actual registered child names for resolution
 
     Returns:
         List of validated BaseEvent objects
-
-    Raises:
-        ValueError: If extraction or validation fails
     """
     if not transcript.strip():
         raise ValueError("Empty transcript received")
@@ -88,6 +76,9 @@ async def extract_events(
     user_prompt = f"Transcript: {transcript}"
     if child_name:
         user_prompt = f"Context: Events are about child named {child_name}.\n\n{user_prompt}"
+    elif known_children:
+        children_list = ", ".join(known_children)
+        user_prompt = f"Known Children in this room: {children_list}\n\n{user_prompt}"
 
     logger.info(f"Extracting events from transcript ({len(transcript)} chars)")
 
@@ -103,6 +94,7 @@ async def extract_events(
         )
 
         raw_content = response.choices[0].message.content
+        logger.debug(f"GPT-4o raw response: {raw_content}")
         parsed = json.loads(raw_content)
 
         # Handle all possible GPT-4o response formats:
@@ -149,7 +141,7 @@ async def extract_events(
                 )
                 validated_events.append(event)
             except (ValidationError, KeyError, ValueError) as e:
-                logger.warning(f"Skipping malformed event: {e} — raw: {raw_event}")
+                logger.warning(f"Dropped malformed event: {type(e).__name__}: {e} — raw: {raw_event}")
                 continue
 
         logger.info(
@@ -162,5 +154,5 @@ async def extract_events(
         logger.error(f"GPT-4o returned invalid JSON: {e}")
         raise ValueError(f"LLM returned invalid JSON: {e}")
     except Exception as e:
-        logger.error(f"Event extraction failed: {e}")
+        logger.error(f"Event extraction failed: {type(e).__name__}: {e}", exc_info=True)
         raise

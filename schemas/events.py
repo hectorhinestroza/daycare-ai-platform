@@ -1,7 +1,7 @@
 """Core event schemas — source of truth for the entire platform.
 
 Tier 1: Voice-capturable events (food, nap, potty, kudos, observation,
-        health_check, absence, note)
+        health_check, absence, note, activity)
 Tier 2: High-stakes events with mandatory review (incident, medication)
 Tier 3: Skip for V1 (photo/video handled as media attachments, not events)
 """
@@ -26,6 +26,7 @@ class EventType(str, Enum):
     HEALTH_CHECK = "health_check"
     ABSENCE = "absence"
     NOTE = "note"
+    ACTIVITY = "activity"  # Basketball, art, music, outdoor play, etc.
     # Tier 2 — High-stakes (always needs_review=True)
     INCIDENT = "incident"
     MEDICATION = "medication"
@@ -45,7 +46,7 @@ ALWAYS_REVIEW_TYPES = {EventType.INCIDENT, EventType.MEDICATION}
 # These types are low-stakes and default to auto-approve via teacher
 LOW_RISK_TYPES = {
     EventType.FOOD, EventType.NAP, EventType.POTTY,
-    EventType.KUDOS, EventType.ABSENCE,
+    EventType.KUDOS, EventType.ABSENCE, EventType.ACTIVITY,
 }
 
 # Standard ops — no special handling

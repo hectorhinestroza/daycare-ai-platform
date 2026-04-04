@@ -61,7 +61,7 @@ class Teacher(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     center_id = Column(UUID(as_uuid=True), ForeignKey("centers.id"), nullable=False)
     name = Column(String(255), nullable=False)
-    phone = Column(String(20), nullable=False, unique=True)  # WhatsApp number
+    phone = Column(String(30), nullable=False, unique=True)  # WhatsApp number (E.164)
     room_id = Column(UUID(as_uuid=True), ForeignKey("rooms.id"), nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)

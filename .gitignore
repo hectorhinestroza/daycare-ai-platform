@@ -25,3 +25,6 @@ Thumbs.db
 # Agent
 .agent/
 .gemini/
+
+# Dev scripts (contain local data)
+scripts/seed_dev.py

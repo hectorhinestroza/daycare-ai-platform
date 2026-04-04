@@ -178,3 +178,23 @@ def get_teacher_by_phone(db: Session, phone: str) -> Optional[Teacher]:
         .filter(Teacher.phone == phone, Teacher.is_active == True)
         .first()
     )
+
+
+# ─── Child Management ──────────────────────────────────────────
+
+def get_children_by_center(db: Session, center_id: uuid.UUID) -> List[Child]:
+    """Get all registered children for a center."""
+    return db.query(Child).filter(Child.center_id == center_id).all()
+
+
+def get_child_by_name(db: Session, center_id: uuid.UUID, name: str) -> Optional[Child]:
+    """Basic fuzzy/exact name lookup (System of Record resolution)."""
+    # V1: Exact match (case-insensitive)
+    return (
+        db.query(Child)
+        .filter(
+            Child.center_id == center_id,
+            Child.name.ilike(name)
+        )
+        .first()
+    )
