@@ -28,3 +28,7 @@ Thumbs.db
 
 # Dev scripts (contain local data)
 scripts/seed_dev.py
+
+# Frontend
+node_modules/
+frontend/console/dist/
