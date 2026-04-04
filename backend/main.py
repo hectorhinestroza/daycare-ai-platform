@@ -4,6 +4,7 @@ from typing import Dict
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 # Configure structured logging
 logging.basicConfig(
@@ -20,6 +21,7 @@ from backend.middleware import (
     RequestIDMiddleware,
     RequestTimingMiddleware,
 )
+from backend.routers.events import router as events_router
 from backend.routers.whatsapp import router as whatsapp_router
 from backend.storage.database import Base, engine
 
@@ -28,6 +30,7 @@ from backend.storage.database import Base, engine
 async def lifespan(app: FastAPI):
     """Create DB tables on startup (dev mode). Alembic handles prod migrations."""
     import backend.storage.models  # noqa: F401 — register all models with Base
+
     Base.metadata.create_all(bind=engine)
     logger.info("Database tables created / verified")
     yield
@@ -44,7 +47,17 @@ app.add_middleware(GlobalExceptionMiddleware)
 app.add_middleware(RequestTimingMiddleware)
 app.add_middleware(RequestIDMiddleware)
 
+# CORS — allow React dev server
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Routers
+app.include_router(events_router)
 app.include_router(whatsapp_router)
 
 

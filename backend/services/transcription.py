@@ -51,9 +51,7 @@ async def transcribe_audio(audio_bytes: bytes, filename: str = "audio.ogg") -> s
         if not transcript_text:
             raise ValueError("Whisper returned empty transcript")
 
-        logger.info(
-            f"Transcription complete: {len(transcript_text)} chars"
-        )
+        logger.info(f"Transcription complete: {len(transcript_text)} chars")
         return transcript_text
 
     except Exception as e:

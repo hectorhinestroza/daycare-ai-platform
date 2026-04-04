@@ -24,7 +24,7 @@ AI-native childcare operations platform. Voice memos from teachers
 - COPPA compliance is a hard gate — see `docs/legal_PRD.md`
 
 ## Current Phase
-Week 1 of 10-week build plan. Issues #1–#3 complete. Next: Issue #4 (PostgreSQL).
+Week 3 of 10-week build plan. Issues #1–#5 complete. Next: Issues #6–#7 (Admin Review Console).
 
 ## Three-Tier Review System
 
@@ -93,8 +93,8 @@ Repo: https://github.com/hectorhinestroza/daycare-ai-platform
 | 1 | WhatsApp Business API Setup via Twilio | week-1 | ✅ Done |
 | 2 | Whisper Transcription Endpoint | week-1 | ✅ Done |
 | 3 | GPT-4o Structured Extraction with Pydantic Schemas | week-1 | ✅ Done |
-| 4 | PostgreSQL Multi-Tenant Schema | week-2 | 🔲 Open |
-| 5 | Basic Logging and Error Handling | week-2 | 🔲 Open |
+| 4 | PostgreSQL Multi-Tenant Schema | week-2 | ✅ Done |
+| 5 | Basic Logging and Error Handling | week-2 | ✅ Done |
 
 ### Weeks 3–4: Admin Review Console
 | # | Title | Label | Status |
@@ -121,7 +121,7 @@ Repo: https://github.com/hectorhinestroza/daycare-ai-platform
 | # | Title | Label | Status |
 |---|-------|-------|--------|
 | 10 | AI Narrative Daily Report Generation | week-5 | 🔲 Open |
-| 11 | Parent Portal: Daily Report View + Photo Gallery | week-5 | 🔲 Open |
+| 11 | Parent Portal: Daily Report View + On demand view(every time teacher sends update it notifies the parent and parent can view the update in real time) + Photo Gallery +  | week-5 | 🔲 Open |
 | 12 | WhatsApp Push Notification + Parent Heart Reaction | week-6 | 🔲 Open |
 
 ### Weeks 7–8: Billing Module + CSV Migration

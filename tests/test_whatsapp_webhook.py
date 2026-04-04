@@ -25,34 +25,39 @@ engine = create_engine(
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-def override_get_db():
-    try:
-        db = TestingSessionLocal()
-        yield db
-    finally:
-        db.close()
-
-app.dependency_overrides[get_db] = override_get_db
-client = TestClient(app)
 
 @pytest.fixture(autouse=True)
 def setup_db():
     """Create fresh schema for each test and seed a teacher."""
     Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
-    
+
+    # Override get_db to use this test session
+    def override_get_db():
+        try:
+            yield db
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_get_db
+
     # Seed data
     center = Center(id=uuid.uuid4(), name="Test Center")
     db.add(center)
     db.commit()
-    
+
     teacher = Teacher(id=uuid.uuid4(), center_id=center.id, name="Test Teacher", phone="+1234567890")
     db.add(teacher)
     db.commit()
-    
+
     yield db
+
+    app.dependency_overrides.pop(get_db, None)
     Base.metadata.drop_all(bind=engine)
     db.close()
+
+
+client = TestClient(app)
 
 
 class TestCommandHandling:

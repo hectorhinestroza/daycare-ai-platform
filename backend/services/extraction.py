@@ -148,10 +148,7 @@ async def extract_events(
                 logger.warning(f"Dropped malformed event: {type(e).__name__}: {e} — raw: {raw_event}")
                 continue
 
-        logger.info(
-            f"Extracted {len(validated_events)} valid events "
-            f"from {len(raw_events)} raw events"
-        )
+        logger.info(f"Extracted {len(validated_events)} valid events from {len(raw_events)} raw events")
         return validated_events
 
     except json.JSONDecodeError as e:

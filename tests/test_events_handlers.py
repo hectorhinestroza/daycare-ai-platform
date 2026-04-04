@@ -26,6 +26,7 @@ from schemas.events import BaseEvent, EventType
 
 # ─── Fixtures ─────────────────────────────────────────────────
 
+
 @pytest.fixture
 def db():
     """Create a fresh SQLite in-memory DB for each test."""
@@ -75,6 +76,7 @@ def teacher_a(db, center_a):
 
 # ─── Event CRUD Tests ─────────────────────────────────────────
 
+
 class TestEventCRUD:
     def test_create_event(self, db, center_a):
         event = create_event(
@@ -95,8 +97,10 @@ class TestEventCRUD:
 
     def test_get_event(self, db, center_a):
         event = create_event(
-            db=db, center_id=center_a.id,
-            child_name="Emma", event_type="nap",
+            db=db,
+            center_id=center_a.id,
+            child_name="Emma",
+            event_type="nap",
             raw_transcript="Emma napped",
         )
         found = get_event(db, event.id, center_a.id)
@@ -105,8 +109,10 @@ class TestEventCRUD:
 
     def test_approve_event(self, db, center_a):
         event = create_event(
-            db=db, center_id=center_a.id,
-            child_name="Jason", event_type="food",
+            db=db,
+            center_id=center_a.id,
+            child_name="Jason",
+            event_type="food",
             raw_transcript="Jason ate lunch",
         )
         approved = approve_event(db, event.id, center_a.id)
@@ -115,20 +121,19 @@ class TestEventCRUD:
 
     def test_reject_event(self, db, center_a):
         event = create_event(
-            db=db, center_id=center_a.id,
-            child_name="Jason", event_type="food",
+            db=db,
+            center_id=center_a.id,
+            child_name="Jason",
+            event_type="food",
             raw_transcript="Jason ate lunch",
         )
         rejected = reject_event(db, event.id, center_a.id)
         assert rejected.status == "REJECTED"
 
     def test_get_events_by_child(self, db, center_a):
-        create_event(db=db, center_id=center_a.id, child_name="Jason",
-                     event_type="food", raw_transcript="food")
-        create_event(db=db, center_id=center_a.id, child_name="Jason",
-                     event_type="nap", raw_transcript="nap")
-        create_event(db=db, center_id=center_a.id, child_name="Emma",
-                     event_type="potty", raw_transcript="potty")
+        create_event(db=db, center_id=center_a.id, child_name="Jason", event_type="food", raw_transcript="food")
+        create_event(db=db, center_id=center_a.id, child_name="Jason", event_type="nap", raw_transcript="nap")
+        create_event(db=db, center_id=center_a.id, child_name="Emma", event_type="potty", raw_transcript="potty")
 
         jason_events = get_events_by_child(db, center_a.id, "Jason")
         assert len(jason_events) == 2
@@ -139,15 +144,27 @@ class TestEventCRUD:
 
 # ─── Review Queue Tests ──────────────────────────────────────
 
+
 class TestReviewQueues:
     def test_teacher_queue(self, db, center_a):
         """Teacher queue shows events with review_tier=teacher and status=PENDING."""
-        create_event(db=db, center_id=center_a.id, child_name="Jason",
-                     event_type="food", raw_transcript="food",
-                     review_tier="teacher")
-        create_event(db=db, center_id=center_a.id, child_name="Emma",
-                     event_type="incident", raw_transcript="incident",
-                     review_tier="director", needs_director_review=True)
+        create_event(
+            db=db,
+            center_id=center_a.id,
+            child_name="Jason",
+            event_type="food",
+            raw_transcript="food",
+            review_tier="teacher",
+        )
+        create_event(
+            db=db,
+            center_id=center_a.id,
+            child_name="Emma",
+            event_type="incident",
+            raw_transcript="incident",
+            review_tier="director",
+            needs_director_review=True,
+        )
 
         teacher_events = get_events_pending_teacher(db, center_a.id)
         assert len(teacher_events) == 1
@@ -155,12 +172,23 @@ class TestReviewQueues:
 
     def test_director_queue(self, db, center_a):
         """Director queue shows only flagged events."""
-        create_event(db=db, center_id=center_a.id, child_name="Jason",
-                     event_type="food", raw_transcript="food",
-                     review_tier="teacher")
-        create_event(db=db, center_id=center_a.id, child_name="Emma",
-                     event_type="incident", raw_transcript="incident",
-                     review_tier="director", needs_director_review=True)
+        create_event(
+            db=db,
+            center_id=center_a.id,
+            child_name="Jason",
+            event_type="food",
+            raw_transcript="food",
+            review_tier="teacher",
+        )
+        create_event(
+            db=db,
+            center_id=center_a.id,
+            child_name="Emma",
+            event_type="incident",
+            raw_transcript="incident",
+            review_tier="director",
+            needs_director_review=True,
+        )
 
         director_events = get_events_pending_director(db, center_a.id)
         assert len(director_events) == 1
@@ -168,9 +196,14 @@ class TestReviewQueues:
 
     def test_approved_events_leave_queue(self, db, center_a):
         """Once approved, events no longer appear in pending queues."""
-        event = create_event(db=db, center_id=center_a.id, child_name="Jason",
-                             event_type="food", raw_transcript="food",
-                             review_tier="teacher")
+        event = create_event(
+            db=db,
+            center_id=center_a.id,
+            child_name="Jason",
+            event_type="food",
+            raw_transcript="food",
+            review_tier="teacher",
+        )
         approve_event(db, event.id, center_a.id)
 
         teacher_events = get_events_pending_teacher(db, center_a.id)
@@ -179,13 +212,12 @@ class TestReviewQueues:
 
 # ─── Multi-Tenant Isolation Tests ─────────────────────────────
 
+
 class TestMultiTenantIsolation:
     def test_center_a_cannot_see_center_b_events(self, db, center_a, center_b):
         """Center A's events are invisible to Center B queries."""
-        create_event(db=db, center_id=center_a.id, child_name="Jason",
-                     event_type="food", raw_transcript="food")
-        create_event(db=db, center_id=center_b.id, child_name="Emma",
-                     event_type="nap", raw_transcript="nap")
+        create_event(db=db, center_id=center_a.id, child_name="Jason", event_type="food", raw_transcript="food")
+        create_event(db=db, center_id=center_b.id, child_name="Emma", event_type="nap", raw_transcript="nap")
 
         a_events = get_events_by_child(db, center_a.id, "Jason")
         assert len(a_events) == 1
@@ -196,8 +228,7 @@ class TestMultiTenantIsolation:
 
     def test_cannot_approve_event_from_another_center(self, db, center_a, center_b):
         """Center B cannot approve Center A's events."""
-        event = create_event(db=db, center_id=center_a.id, child_name="Jason",
-                             event_type="food", raw_transcript="food")
+        event = create_event(db=db, center_id=center_a.id, child_name="Jason", event_type="food", raw_transcript="food")
 
         # Center B tries to approve Center A's event
         result = approve_event(db, event.id, center_b.id)
@@ -209,12 +240,22 @@ class TestMultiTenantIsolation:
 
     def test_teacher_queue_isolated(self, db, center_a, center_b):
         """Teacher queues are center-scoped."""
-        create_event(db=db, center_id=center_a.id, child_name="Jason",
-                     event_type="food", raw_transcript="food",
-                     review_tier="teacher")
-        create_event(db=db, center_id=center_b.id, child_name="Emma",
-                     event_type="nap", raw_transcript="nap",
-                     review_tier="teacher")
+        create_event(
+            db=db,
+            center_id=center_a.id,
+            child_name="Jason",
+            event_type="food",
+            raw_transcript="food",
+            review_tier="teacher",
+        )
+        create_event(
+            db=db,
+            center_id=center_b.id,
+            child_name="Emma",
+            event_type="nap",
+            raw_transcript="nap",
+            review_tier="teacher",
+        )
 
         a_queue = get_events_pending_teacher(db, center_a.id)
         b_queue = get_events_pending_teacher(db, center_b.id)
@@ -226,6 +267,7 @@ class TestMultiTenantIsolation:
 
 
 # ─── Teacher Lookup Tests ─────────────────────────────────────
+
 
 class TestTeacherLookup:
     def test_find_teacher_by_phone(self, db, teacher_a):
@@ -239,6 +281,7 @@ class TestTeacherLookup:
 
 
 # ─── create_event_from_base Tests ─────────────────────────────
+
 
 class TestCreateFromBase:
     def test_create_from_pydantic_model(self, db, center_a):

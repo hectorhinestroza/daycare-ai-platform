@@ -36,10 +36,7 @@ class RequestTimingMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         duration_ms = (time.time() - start_time) * 1000
 
-        logger.info(
-            f"{request.method} {request.url.path} "
-            f"→ {response.status_code} ({duration_ms:.0f}ms)"
-        )
+        logger.info(f"{request.method} {request.url.path} → {response.status_code} ({duration_ms:.0f}ms)")
         return response
 
 
@@ -56,8 +53,7 @@ class GlobalExceptionMiddleware(BaseHTTPMiddleware):
         except Exception as e:
             request_id = getattr(request.state, "request_id", "unknown")
             logger.error(
-                f"Unhandled exception [request_id={request_id}]: "
-                f"{type(e).__name__}: {e}\n{traceback.format_exc()}"
+                f"Unhandled exception [request_id={request_id}]: {type(e).__name__}: {e}\n{traceback.format_exc()}"
             )
             return JSONResponse(
                 status_code=500,

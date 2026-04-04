@@ -84,9 +84,7 @@ def _format_event_summary(events: list) -> str:
 
     parts = []
     for child, types in by_child.items():
-        type_summary = ", ".join(
-            f"{types.count(t)} {t}" for t in dict.fromkeys(types)
-        )
+        type_summary = ", ".join(f"{types.count(t)} {t}" for t in dict.fromkeys(types))
         parts.append(f"{child} ({type_summary})")
 
     total = len(events)
@@ -124,12 +122,7 @@ async def whatsapp_webhook(
     body = Body.strip()
     num_media = int(NumMedia)
 
-    logger.warning(
-        f"=== INCOMING WHATSAPP ===\n"
-        f"  From: {phone}\n"
-        f"  Body: '{body}'\n"
-        f"  NumMedia: {num_media}"
-    )
+    logger.warning(f"=== INCOMING WHATSAPP ===\n  From: {phone}\n  Body: '{body}'\n  NumMedia: {num_media}")
 
     # 1. Handle commands first (no DB lookup needed)
     if body and not num_media:
@@ -142,24 +135,20 @@ async def whatsapp_webhook(
     if not teacher:
         logger.warning(f"Unregistered phone number hit webhook: {phone}")
         # Return generic error instead of dropping so we know what happened
-        return _build_twiml_response(
-            "❌ This phone number is not registered as a teacher account."
-        )
+        return _build_twiml_response("❌ This phone number is not registered as a teacher account.")
 
     center_id = str(teacher.center_id)
     cmd_context = _get_command_context(phone)
     child_context = cmd_context.get("child_name")
 
     # 3. Handle Voice Messages
-    if num_media >= 1 and MediaContentType0 and (
-        "audio" in MediaContentType0 or "video" in MediaContentType0
-    ):
+    if num_media >= 1 and MediaContentType0 and ("audio" in MediaContentType0 or "video" in MediaContentType0):
         try:
             # Download & Transcribe
             audio_bytes, content_type = await download_twilio_media(MediaUrl0)
             ext = "ogg" if "ogg" in content_type else "mp4"
             transcript = await transcribe_audio(audio_bytes, f"voice_memo.{ext}")
-            
+
             # 1. Fetch known children for context
             center_children = get_children_by_center(db, teacher.center_id)
             known_names = [c.name for c in center_children]
@@ -183,9 +172,7 @@ async def whatsapp_webhook(
 
         except Exception as e:
             logger.error(f"Voice pipeline failed: {e}", exc_info=True)
-            return _build_twiml_response(
-                "❌ Sorry, I had trouble processing that voice memo. Please try again."
-            )
+            return _build_twiml_response("❌ Sorry, I had trouble processing that voice memo. Please try again.")
 
     # 4. Handle Text as a Note
     if body and not num_media:
@@ -193,7 +180,7 @@ async def whatsapp_webhook(
             # Extract
             center_children = get_children_by_center(db, teacher.center_id)
             known_names = [c.name for c in center_children]
-            
+
             events = await extract_events(
                 transcript=body,
                 center_id=center_id,
@@ -210,9 +197,7 @@ async def whatsapp_webhook(
             return _build_twiml_response(_format_event_summary(events))
         except Exception as e:
             logger.error(f"Extraction from text failed: {e}", exc_info=True)
-            return _build_twiml_response(
-                "❌ Sorry, I had trouble processing that message. Please try again."
-            )
+            return _build_twiml_response("❌ Sorry, I had trouble processing that message. Please try again.")
 
     # 5. Handle Photos
     if num_media >= 1 and MediaContentType0 and "image" in MediaContentType0:
@@ -220,11 +205,8 @@ async def whatsapp_webhook(
         logger.info(f"Photo received for {child_name} from {phone}")
         msg = f"📷 Photo received for {child_name}."
         if body:
-            msg += f" Caption: \"{body}\""
+            msg += f' Caption: "{body}"'
         return _build_twiml_response(msg)
 
     # 6. Fallback
-    return _build_twiml_response(
-        "👋 Hi! Send a voice memo to log events, "
-        "or use /child [name] to set context."
-    )
+    return _build_twiml_response("👋 Hi! Send a voice memo to log events, or use /child [name] to set context.")

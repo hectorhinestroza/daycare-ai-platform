@@ -81,6 +81,7 @@ REVIEW CONSOLE  (React PWA — admin / VA)
   ▼
 PARENT PORTAL  ★ NEW — replaces Chrome extension
   ├── AI narrative daily report per child  (120–250 words, warm tone)
+  ├── On demand view(every time teacher sends update it notifies the parent and parent can view the update in real time including picture if uploaded)
   ├── Photo gallery with AI-generated captions
   ├── WhatsApp push: "Jason's daily report is ready! 📚"
   └── Magic link auth — no app install required

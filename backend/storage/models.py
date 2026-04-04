@@ -26,6 +26,7 @@ from backend.storage.database import Base
 
 # ─── Centers ──────────────────────────────────────────────────
 
+
 class Center(Base):
     __tablename__ = "centers"
 
@@ -44,8 +45,10 @@ class Center(Base):
 
 # ─── Admins ───────────────────────────────────────────────────
 
+
 class Admin(Base):
     """Directors and VAs who review events and manage the center."""
+
     __tablename__ = "admins"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -61,6 +64,7 @@ class Admin(Base):
 
 
 # ─── Teachers ─────────────────────────────────────────────────
+
 
 class Teacher(Base):
     __tablename__ = "teachers"
@@ -80,6 +84,7 @@ class Teacher(Base):
 
 # ─── Rooms ────────────────────────────────────────────────────
 
+
 class Room(Base):
     __tablename__ = "rooms"
 
@@ -94,6 +99,7 @@ class Room(Base):
 
 
 # ─── Children ─────────────────────────────────────────────────
+
 
 class Child(Base):
     __tablename__ = "children"
@@ -116,12 +122,14 @@ class Child(Base):
 
 # ─── Events ───────────────────────────────────────────────────
 
+
 class Event(Base):
     """Core event table — every AI-extracted event is stored here.
 
     Multi-tenant: center_id is required.
     Review: review_tier determines teacher vs director queue.
     """
+
     __tablename__ = "events"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -131,7 +139,7 @@ class Event(Base):
 
     # Event data
     child_name = Column(String(255), nullable=False)  # from transcript, before child_id resolution
-    event_type = Column(String(50), nullable=False)    # food, nap, potty, etc.
+    event_type = Column(String(50), nullable=False)  # food, nap, potty, etc.
     event_time = Column(DateTime, nullable=True)
     details = Column(Text, nullable=True)
     raw_transcript = Column(Text, nullable=False)
@@ -158,8 +166,10 @@ class Event(Base):
 
 # ─── Photos ───────────────────────────────────────────────────
 
+
 class Photo(Base):
     """Photo references — actual images stored in S3, not in DB."""
+
     __tablename__ = "photos"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

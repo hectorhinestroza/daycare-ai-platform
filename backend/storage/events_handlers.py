@@ -14,6 +14,7 @@ from backend.storage.models import Child, Event, Teacher
 
 # ─── Event CRUD ───────────────────────────────────────────────
 
+
 def create_event(
     db: Session,
     center_id: uuid.UUID,
@@ -83,11 +84,7 @@ def create_event_from_base(
 
 def get_event(db: Session, event_id: uuid.UUID, center_id: uuid.UUID) -> Optional[Event]:
     """Get a single event, filtered by center_id."""
-    return (
-        db.query(Event)
-        .filter(Event.id == event_id, Event.center_id == center_id)
-        .first()
-    )
+    return db.query(Event).filter(Event.id == event_id, Event.center_id == center_id).first()
 
 
 def get_events_pending_teacher(db: Session, center_id: uuid.UUID) -> List[Event]:
@@ -154,6 +151,30 @@ def reject_event(
     return event
 
 
+def update_event(
+    db: Session,
+    event_id: uuid.UUID,
+    center_id: uuid.UUID,
+    updates: dict,
+) -> Optional[Event]:
+    """Inline edit an event (partial update).
+
+    Allowed fields: child_name, details, event_type, event_time.
+    """
+    event = get_event(db, event_id, center_id)
+    if not event:
+        return None
+
+    allowed_fields = {"child_name", "details", "event_type", "event_time"}
+    for key, value in updates.items():
+        if key in allowed_fields and value is not None:
+            setattr(event, key, value)
+
+    db.commit()
+    db.refresh(event)
+    return event
+
+
 def get_events_by_child(
     db: Session,
     center_id: uuid.UUID,
@@ -172,16 +193,14 @@ def get_events_by_child(
 
 # ─── Teacher Lookup ───────────────────────────────────────────
 
+
 def get_teacher_by_phone(db: Session, phone: str) -> Optional[Teacher]:
     """Resolve phone number → teacher record (for center_id lookup)."""
-    return (
-        db.query(Teacher)
-        .filter(Teacher.phone == phone, Teacher.is_active)
-        .first()
-    )
+    return db.query(Teacher).filter(Teacher.phone == phone, Teacher.is_active).first()
 
 
 # ─── Child Management ──────────────────────────────────────────
+
 
 def get_children_by_center(db: Session, center_id: uuid.UUID) -> List[Child]:
     """Get all registered children for a center."""
@@ -191,11 +210,4 @@ def get_children_by_center(db: Session, center_id: uuid.UUID) -> List[Child]:
 def get_child_by_name(db: Session, center_id: uuid.UUID, name: str) -> Optional[Child]:
     """Basic fuzzy/exact name lookup (System of Record resolution)."""
     # V1: Exact match (case-insensitive)
-    return (
-        db.query(Child)
-        .filter(
-            Child.center_id == center_id,
-            Child.name.ilike(name)
-        )
-        .first()
-    )
+    return db.query(Child).filter(Child.center_id == center_id, Child.name.ilike(name)).first()

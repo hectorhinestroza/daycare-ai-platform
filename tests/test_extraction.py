@@ -23,17 +23,19 @@ class TestExtractEvents:
         mock_openai_class.return_value = mock_client
 
         mock_response = MagicMock()
-        mock_response.choices[0].message.content = json.dumps({
-            "events": [
-                {
-                    "event_type": "food",
-                    "child_name": "Jason",
-                    "event_time": None,
-                    "confidence_score": 0.95,
-                    "details": "Ate mac and cheese for lunch",
-                }
-            ]
-        })
+        mock_response.choices[0].message.content = json.dumps(
+            {
+                "events": [
+                    {
+                        "event_type": "food",
+                        "child_name": "Jason",
+                        "event_time": None,
+                        "confidence_score": 0.95,
+                        "details": "Ate mac and cheese for lunch",
+                    }
+                ]
+            }
+        )
         mock_client.chat.completions.create.return_value = mock_response
 
         events = await extract_events(
@@ -57,13 +59,15 @@ class TestExtractEvents:
         mock_openai_class.return_value = mock_client
 
         mock_response = MagicMock()
-        mock_response.choices[0].message.content = json.dumps({
-            "events": [
-                {"event_type": "food", "child_name": "Jason", "confidence_score": 0.9},
-                {"event_type": "nap", "child_name": "Jason", "confidence_score": 0.85},
-                {"event_type": "kudos", "child_name": "Emma", "confidence_score": 0.8},
-            ]
-        })
+        mock_response.choices[0].message.content = json.dumps(
+            {
+                "events": [
+                    {"event_type": "food", "child_name": "Jason", "confidence_score": 0.9},
+                    {"event_type": "nap", "child_name": "Jason", "confidence_score": 0.85},
+                    {"event_type": "kudos", "child_name": "Emma", "confidence_score": 0.8},
+                ]
+            }
+        )
         mock_client.chat.completions.create.return_value = mock_response
 
         events = await extract_events("Jason had lunch, napped. Emma shared toys.", "c1")
@@ -83,11 +87,13 @@ class TestExtractEvents:
         mock_openai_class.return_value = mock_client
 
         mock_response = MagicMock()
-        mock_response.choices[0].message.content = json.dumps({
-            "events": [
-                {"event_type": "nap", "child_name": "Someone", "confidence_score": 0.3},
-            ]
-        })
+        mock_response.choices[0].message.content = json.dumps(
+            {
+                "events": [
+                    {"event_type": "nap", "child_name": "Someone", "confidence_score": 0.3},
+                ]
+            }
+        )
         mock_client.chat.completions.create.return_value = mock_response
 
         events = await extract_events("someone took a nap", "c1")
@@ -106,11 +112,13 @@ class TestExtractEvents:
         mock_openai_class.return_value = mock_client
 
         mock_response = MagicMock()
-        mock_response.choices[0].message.content = json.dumps({
-            "events": [
-                {"event_type": "incident", "child_name": "Jason", "confidence_score": 0.99},
-            ]
-        })
+        mock_response.choices[0].message.content = json.dumps(
+            {
+                "events": [
+                    {"event_type": "incident", "child_name": "Jason", "confidence_score": 0.99},
+                ]
+            }
+        )
         mock_client.chat.completions.create.return_value = mock_response
 
         events = await extract_events("Jason fell and scraped his knee", "c1")
@@ -129,11 +137,13 @@ class TestExtractEvents:
         mock_openai_class.return_value = mock_client
 
         mock_response = MagicMock()
-        mock_response.choices[0].message.content = json.dumps({
-            "events": [
-                {"event_type": "medication", "child_name": "Emma", "confidence_score": 0.95},
-            ]
-        })
+        mock_response.choices[0].message.content = json.dumps(
+            {
+                "events": [
+                    {"event_type": "medication", "child_name": "Emma", "confidence_score": 0.95},
+                ]
+            }
+        )
         mock_client.chat.completions.create.return_value = mock_response
 
         events = await extract_events("Gave Emma her allergy medicine at 2pm", "c1")
@@ -150,11 +160,13 @@ class TestExtractEvents:
         mock_openai_class.return_value = mock_client
 
         mock_response = MagicMock()
-        mock_response.choices[0].message.content = json.dumps({
-            "events": [
-                {"event_type": "potty", "child_name": "Sarah", "confidence_score": 0.9},
-            ]
-        })
+        mock_response.choices[0].message.content = json.dumps(
+            {
+                "events": [
+                    {"event_type": "potty", "child_name": "Sarah", "confidence_score": 0.9},
+                ]
+            }
+        )
         mock_client.chat.completions.create.return_value = mock_response
 
         events = await extract_events("Successful potty for Sarah", "c1")
@@ -170,12 +182,18 @@ class TestExtractEvents:
         mock_openai_class.return_value = mock_client
 
         mock_response = MagicMock()
-        mock_response.choices[0].message.content = json.dumps({
-            "events": [
-                {"event_type": "health_check", "child_name": "Emma", "confidence_score": 0.85,
-                 "details": "Temp of 99.2"},
-            ]
-        })
+        mock_response.choices[0].message.content = json.dumps(
+            {
+                "events": [
+                    {
+                        "event_type": "health_check",
+                        "child_name": "Emma",
+                        "confidence_score": 0.85,
+                        "details": "Temp of 99.2",
+                    },
+                ]
+            }
+        )
         mock_client.chat.completions.create.return_value = mock_response
 
         events = await extract_events("Emma had a temp of 99.2", "c1")
@@ -208,9 +226,9 @@ class TestExtractEvents:
         mock_openai_class.return_value = mock_client
 
         mock_response = MagicMock()
-        mock_response.choices[0].message.content = json.dumps({
-            "events": [{"event_type": "food", "child_name": "Jason", "confidence_score": 0.9}]
-        })
+        mock_response.choices[0].message.content = json.dumps(
+            {"events": [{"event_type": "food", "child_name": "Jason", "confidence_score": 0.9}]}
+        )
         mock_client.chat.completions.create.return_value = mock_response
 
         await extract_events("had lunch", "c1", child_name="Jason")
@@ -232,12 +250,14 @@ class TestExtractEvents:
         mock_openai_class.return_value = mock_client
 
         mock_response = MagicMock()
-        mock_response.choices[0].message.content = json.dumps({
-            "events": [
-                {"event_type": "INVALID_TYPE", "child_name": "Test"},
-                {"event_type": "food", "child_name": "Jason", "confidence_score": 0.85},
-            ]
-        })
+        mock_response.choices[0].message.content = json.dumps(
+            {
+                "events": [
+                    {"event_type": "INVALID_TYPE", "child_name": "Test"},
+                    {"event_type": "food", "child_name": "Jason", "confidence_score": 0.85},
+                ]
+            }
+        )
         mock_client.chat.completions.create.return_value = mock_response
 
         events = await extract_events("test transcript", "c1")
@@ -253,11 +273,13 @@ class TestExtractEvents:
         mock_openai_class.return_value = mock_client
 
         mock_response = MagicMock()
-        mock_response.choices[0].message.content = json.dumps({
-            "events": [
-                {"event_type": "food", "child_name": "Jason"},  # no confidence_score
-            ]
-        })
+        mock_response.choices[0].message.content = json.dumps(
+            {
+                "events": [
+                    {"event_type": "food", "child_name": "Jason"},  # no confidence_score
+                ]
+            }
+        )
         mock_client.chat.completions.create.return_value = mock_response
 
         events = await extract_events("Jason ate lunch", "c1")

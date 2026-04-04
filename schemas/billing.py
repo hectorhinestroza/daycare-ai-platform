@@ -17,8 +17,9 @@ class BillingEvent(BaseEvent):
     Extracted from voice: "Marcus was picked up 45 minutes late."
     Auto-calculates amount from center config.
     """
-    billing_type: Literal['LATE_PICKUP', 'EXTRA_HOURS', 'DROP_IN']
+
+    billing_type: Literal["LATE_PICKUP", "EXTRA_HOURS", "DROP_IN"]
     minutes_over: Optional[int] = None
     hours_extra: Optional[float] = None
-    amount_usd: Optional[float] = None     # auto-calculated from center config
+    amount_usd: Optional[float] = None  # auto-calculated from center config
     stripe_invoice_id: Optional[str] = None
