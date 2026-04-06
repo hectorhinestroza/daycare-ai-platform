@@ -57,3 +57,14 @@ export async function fetchHistory(centerId, { status, limit = 50, offset = 0 } 
   if (!res.ok) throw new Error(`Failed to fetch history: ${res.status}`);
   return res.json();
 }
+
+export async function fetchActivityLog(centerId, { action, eventId, limit = 50, offset = 0 } = {}) {
+  const params = new URLSearchParams();
+  if (action) params.set('action', action);
+  if (eventId) params.set('event_id', eventId);
+  params.set('limit', String(limit));
+  params.set('offset', String(offset));
+  const res = await fetch(`${API_BASE}/api/activity/${centerId}?${params}`);
+  if (!res.ok) throw new Error(`Failed to fetch activity log: ${res.status}`);
+  return res.json();
+}

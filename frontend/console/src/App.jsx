@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import EventCard from './components/EventCard';
 import EmptyState from './components/EmptyState';
 import Toast from './components/Toast';
+import ActivityLog from './components/ActivityLog';
 import {
   fetchTeacherQueue,
   fetchDirectorQueue,
@@ -39,6 +40,10 @@ function App() {
       setError('No center_id provided. Add ?center=YOUR_CENTER_ID to the URL.');
       setLoading(false);
       return;
+    }
+    
+    if (view === 'activity') {
+      return; // ActivityLog fetches its own data
     }
 
     setLoading(true);
@@ -134,6 +139,12 @@ function App() {
             >
               📜 History
             </button>
+            <button
+              className={`toggle-btn ${view === 'activity' ? 'active' : ''}`}
+              onClick={() => setView('activity')}
+            >
+              📑 Activity
+            </button>
           </div>
           {!isHistory && (
             <div className="role-toggle">
@@ -165,7 +176,9 @@ function App() {
           </div>
         )}
 
-        {loading && events.length === 0 ? (
+        {view === 'activity' ? (
+          <ActivityLog centerId={centerId} />
+        ) : loading && events.length === 0 ? (
           <div className="loading-state">
             <div className="spinner" />
             <p>Loading events...</p>
