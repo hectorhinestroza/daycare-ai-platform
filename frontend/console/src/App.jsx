@@ -15,7 +15,15 @@ import {
 
 function App() {
   const [role, setRole] = useState('teacher');
-  const [view, setView] = useState('pending'); // 'pending' | 'history'
+  const [view, setView] = useState('pending'); // 'pending' | 'history' | 'activity'
+  
+  // Enforce role-based view access
+  useEffect(() => {
+    if (role === 'teacher' && view === 'activity') {
+      setView('pending');
+    }
+  }, [role, view]);
+
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -121,9 +129,11 @@ function App() {
       <header className="app-header">
         <div className="header-left">
           <h1>📋 Review Console</h1>
-          <span className="event-count">
-            {events.length} {isHistory ? 'reviewed' : 'pending'}
-          </span>
+          {view !== 'activity' && (
+            <span className="event-count">
+              {events.length} {isHistory ? 'reviewed' : 'pending'}
+            </span>
+          )}
         </div>
         <div className="header-right">
           <div className="view-toggle">
@@ -139,14 +149,15 @@ function App() {
             >
               📜 History
             </button>
-            <button
-              className={`toggle-btn ${view === 'activity' ? 'active' : ''}`}
-              onClick={() => setView('activity')}
-            >
-              📑 Activity
-            </button>
+            {role === 'director' && (
+              <button
+                className={`toggle-btn ${view === 'activity' ? 'active' : ''}`}
+                onClick={() => setView('activity')}
+              >
+                📑 Activity
+              </button>
+            )}
           </div>
-          {!isHistory && (
             <div className="role-toggle">
               <button
                 className={`toggle-btn ${role === 'teacher' ? 'active' : ''}`}
@@ -161,7 +172,6 @@ function App() {
                 👔 Director
               </button>
             </div>
-          )}
           <button className="btn btn-refresh" onClick={loadEvents} disabled={loading}>
             🔄
           </button>

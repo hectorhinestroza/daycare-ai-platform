@@ -18,6 +18,25 @@ function getActionStyle(action) {
   }
 }
 
+function getActivityMessage(log) {
+  const { action, details } = log;
+  const child = details?.child_name || 'an unknown child';
+  const event = details?.event_type || 'event';
+  
+  switch(action) {
+    case 'APPROVE':
+      return <span>Approved <strong>{event}</strong> event for <strong>{child}</strong>.</span>;
+    case 'REJECT':
+      return <span>Rejected <strong>{event}</strong> event for <strong>{child}</strong>.</span>;
+    case 'BATCH_APPROVE':
+      return <span>Batch approved <strong>{details?.count || 'multiple'}</strong> events for <strong>{child}</strong>.</span>;
+    case 'EDIT':
+      return <span>Edited <strong>{event}</strong> event for <strong>{child}</strong>.</span>;
+    default:
+      return <span>Performed {action} on {child}.</span>;
+  }
+}
+
 export default function ActivityLog({ centerId }) {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -61,9 +80,9 @@ export default function ActivityLog({ centerId }) {
     <div className="space-y-4 px-4 pb-20">
       {logs.map((log) => (
         <div key={log.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-          <div className="flex justify-between items-start mb-2">
-            <span className={`px-2 py-1 text-xs font-semibold rounded-full border ${getActionStyle(log.action)}`}>
-              {log.action}
+          <div className="flex justify-between items-center mb-3">
+            <span className={`px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider rounded-full border ${getActionStyle(log.action)}`}>
+              {log.action.replace('_', ' ')}
             </span>
             <span className="text-xs text-gray-400">
               {new Date(log.created_at).toLocaleString([], {
@@ -75,32 +94,23 @@ export default function ActivityLog({ centerId }) {
             </span>
           </div>
 
-          <div className="text-sm text-gray-700 space-y-1">
-            {log.details && log.details.child_name && (
-              <p>
-                <span className="font-medium text-gray-900">Child:</span> {log.details.child_name}
-              </p>
-            )}
-            
-            {log.details && log.details.event_type && (
-              <p>
-                <span className="font-medium text-gray-900">Event:</span> {log.details.event_type}
-              </p>
-            )}
-
-            {log.action === 'BATCH_APPROVE' && log.details && (
-              <p>
-                <span className="font-medium text-gray-900">Count:</span> {log.details.count} events approved.
-              </p>
-            )}
+          <div className="text-sm text-gray-700">
+            <p>{getActivityMessage(log)}</p>
 
             {log.action === 'EDIT' && log.details && log.details.changes && (
-              <div className="mt-2 bg-gray-50 rounded p-2 text-xs font-mono">
+              <div className="mt-3 bg-gray-50 border border-gray-100 rounded-lg p-3 text-xs font-mono space-y-2">
                 {Object.entries(log.details.changes).map(([field, change]) => (
-                  <div key={field} className="mb-1 last:mb-0">
-                    <span className="text-gray-500">{field}:</span>{' '}
-                    <span className="line-through text-red-500 mr-1">{change.old}</span>
-                    <span className="text-green-600">{change.new}</span>
+                  <div key={field} className="flex flex-col">
+                    <span className="text-gray-400 capitalize mb-1">{field.replace('_', ' ')}:</span>
+                    <div className="flex items-center space-x-2">
+                      <span className="line-through text-red-400 truncate max-w-[45%]">
+                        {String(change.old)}
+                      </span>
+                      <span className="text-gray-300">→</span>
+                      <span className="text-green-600 font-medium truncate max-w-[45%]">
+                        {String(change.new)}
+                      </span>
+                    </div>
                   </div>
                 ))}
               </div>
