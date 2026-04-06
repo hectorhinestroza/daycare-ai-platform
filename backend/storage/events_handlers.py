@@ -10,6 +10,7 @@ from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
+from backend.storage.activity_handlers import log_activity
 from backend.storage.models import Child, Event, Teacher
 
 # ─── Event CRUD ───────────────────────────────────────────────
@@ -130,6 +131,14 @@ def approve_event(
     event.reviewed_at = datetime.now(UTC)
     db.commit()
     db.refresh(event)
+    log_activity(
+        db,
+        center_id,
+        "APPROVE",
+        event_id=event_id,
+        actor_id=reviewed_by,
+        details={"child_name": event.child_name, "event_type": event.event_type},
+    )
     return event
 
 
@@ -148,6 +157,14 @@ def reject_event(
     event.reviewed_at = datetime.now(UTC)
     db.commit()
     db.refresh(event)
+    log_activity(
+        db,
+        center_id,
+        "REJECT",
+        event_id=event_id,
+        actor_id=reviewed_by,
+        details={"child_name": event.child_name, "event_type": event.event_type},
+    )
     return event
 
 
@@ -166,12 +183,21 @@ def update_event(
         return None
 
     allowed_fields = {"child_name", "details", "event_type", "event_time"}
+    old_values = {}
     for key, value in updates.items():
         if key in allowed_fields and value is not None:
+            old_values[key] = getattr(event, key)
             setattr(event, key, value)
 
     db.commit()
     db.refresh(event)
+    log_activity(
+        db,
+        center_id,
+        "EDIT",
+        event_id=event_id,
+        details={"changes": {k: {"old": str(v), "new": str(updates[k])} for k, v in old_values.items()}},
+    )
     return event
 
 
@@ -216,6 +242,14 @@ def batch_approve_events(
         )
     )
     db.commit()
+    if count > 0:
+        log_activity(
+            db,
+            center_id,
+            "BATCH_APPROVE",
+            actor_id=reviewed_by,
+            details={"child_name": child_name, "count": count},
+        )
     return count
 
 

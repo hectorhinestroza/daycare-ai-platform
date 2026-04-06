@@ -118,6 +118,30 @@ class Child(Base):
     center = relationship("Center", back_populates="children")
     room = relationship("Room", back_populates="children")
     events = relationship("Event", back_populates="child")
+    parent_contacts = relationship("ParentContact", back_populates="child", cascade="all, delete-orphan")
+
+
+# ─── Parent Contacts ──────────────────────────────────────────
+
+
+class ParentContact(Base):
+    """Parent or emergency contact linked to a child."""
+
+    __tablename__ = "parent_contacts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    center_id = Column(UUID(as_uuid=True), ForeignKey("centers.id"), nullable=False)
+    child_id = Column(UUID(as_uuid=True), ForeignKey("children.id"), nullable=False)
+    name = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=True)
+    phone = Column(String(30), nullable=True)
+    relationship_type = Column(String(50), nullable=False, default="parent")  # parent | guardian | emergency
+    can_pickup = Column(Boolean, default=True)
+    is_primary = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    child = relationship("Child", back_populates="parent_contacts")
+    center = relationship("Center")
 
 
 # ─── Events ───────────────────────────────────────────────────
@@ -181,3 +205,27 @@ class Photo(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     event = relationship("Event", back_populates="photos")
+
+
+# ─── Activity Log ─────────────────────────────────────────────
+
+
+class ActivityLog(Base):
+    """Audit trail — every admin action is recorded here.
+
+    Actions: APPROVE, REJECT, EDIT, BATCH_APPROVE, CREATE
+    """
+
+    __tablename__ = "activity_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    center_id = Column(UUID(as_uuid=True), ForeignKey("centers.id"), nullable=False)
+    event_id = Column(UUID(as_uuid=True), ForeignKey("events.id"), nullable=True)
+    actor_id = Column(UUID(as_uuid=True), nullable=True)  # teacher or admin who acted
+    actor_type = Column(String(20), nullable=False, default="system")  # teacher | director | system
+    action = Column(String(30), nullable=False)  # APPROVE | REJECT | EDIT | BATCH_APPROVE | CREATE
+    details = Column(Text, nullable=True)  # JSON — what changed
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    center = relationship("Center")
+    event = relationship("Event")

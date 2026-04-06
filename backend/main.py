@@ -21,7 +21,9 @@ from backend.middleware import (
     RequestIDMiddleware,
     RequestTimingMiddleware,
 )
+from backend.routers.activity import router as activity_router
 from backend.routers.events import router as events_router
+from backend.routers.onboarding import router as onboarding_router
 from backend.routers.whatsapp import router as whatsapp_router
 from backend.storage.database import Base, engine
 
@@ -57,7 +59,9 @@ app.add_middleware(
 )
 
 # Routers
+app.include_router(activity_router)
 app.include_router(events_router)
+app.include_router(onboarding_router)
 app.include_router(whatsapp_router)
 
 
