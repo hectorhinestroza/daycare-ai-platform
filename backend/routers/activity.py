@@ -35,6 +35,7 @@ class ActivityLogOut(BaseModel):
     actor_type: str
     action: str
     details: Optional[dict] = None
+    teacher_name: Optional[str] = None
     created_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
@@ -45,6 +46,10 @@ class ActivityLogOut(BaseModel):
 
 def _serialize_log(entry) -> dict:
     """Convert ActivityLog ORM object to response dict, parsing JSON details."""
+    teacher_name = "Unknown"
+    if entry.event and entry.event.teacher:
+        teacher_name = entry.event.teacher.name
+
     data = {
         "id": entry.id,
         "center_id": entry.center_id,
@@ -53,6 +58,7 @@ def _serialize_log(entry) -> dict:
         "actor_type": entry.actor_type,
         "action": entry.action,
         "details": json.loads(entry.details) if entry.details else None,
+        "teacher_name": teacher_name,
         "created_at": entry.created_at,
     }
     return data

@@ -76,53 +76,73 @@ export default function ActivityLog({ centerId }) {
     );
   }
 
+  const grouped = logs.reduce((acc, log) => {
+    const teacherName = log.teacher_name || 'System';
+    if (!acc[teacherName]) acc[teacherName] = [];
+    acc[teacherName].push(log);
+    return acc;
+  }, {});
+
   return (
-    <div className="space-y-4 px-4 pb-20">
-      {logs.map((log) => (
-        <div key={log.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-          <div className="flex justify-between items-center mb-3">
-            <span className={`px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider rounded-full border ${getActionStyle(log.action)}`}>
-              {log.action.replace('_', ' ')}
+    <div className="event-groups">
+      {Object.entries(grouped).map(([teacherName, teacherLogs]) => (
+        <section key={teacherName} className="child-group mb-8">
+          <h2 className="group-header">
+            <span className="child-avatar">
+              {teacherName.charAt(0).toUpperCase()}
             </span>
-            <span className="text-xs text-gray-400">
-              {new Date(log.created_at).toLocaleString([], {
-                month: 'short',
-                day: 'numeric',
-                hour: 'numeric',
-                minute: '2-digit',
-              })}
-            </span>
-          </div>
+            {teacherName}
+            <span className="group-count">{teacherLogs.length}</span>
+          </h2>
+          <div className="space-y-4">
+            {teacherLogs.map((log) => (
+              <div key={log.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                <div className="flex justify-between items-center mb-3">
+                  <span className={`px-2 py-0.5 text-[10px] uppercase font-bold tracking-wider rounded-full border ${getActionStyle(log.action)}`}>
+                    {log.action.replace('_', ' ')}
+                  </span>
+                  <span className="text-xs text-gray-400">
+                    {new Date(log.created_at).toLocaleString([], {
+                      month: 'short',
+                      day: 'numeric',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    })}
+                  </span>
+                </div>
 
-          <div className="text-sm text-gray-700">
-            <p>{getActivityMessage(log)}</p>
+                <div className="text-sm text-gray-700">
+                  <p>{getActivityMessage(log)}</p>
 
-            {log.action === 'EDIT' && log.details && log.details.changes && (
-              <div className="mt-3 bg-gray-50 border border-gray-100 rounded-lg p-3 text-xs font-mono space-y-2">
-                {Object.entries(log.details.changes).map(([field, change]) => (
-                  <div key={field} className="flex flex-col">
-                    <span className="text-gray-400 capitalize mb-1">{field.replace('_', ' ')}:</span>
-                    <div className="flex items-center space-x-2">
-                      <span className="line-through text-red-400 truncate max-w-[45%]">
-                        {String(change.old)}
-                      </span>
-                      <span className="text-gray-300">→</span>
-                      <span className="text-green-600 font-medium truncate max-w-[45%]">
-                        {String(change.new)}
-                      </span>
+                  {log.action === 'EDIT' && log.details && log.details.changes && (
+                    <div className="mt-3 bg-gray-50 border border-gray-100 rounded-lg p-3 text-xs font-mono space-y-2">
+                      {Object.entries(log.details.changes).map(([field, change]) => (
+                        <div key={field} className="flex flex-col">
+                          <span className="text-gray-400 capitalize mb-1">{field.replace('_', ' ')}:</span>
+                          <div className="flex items-center space-x-2">
+                            <span className="line-through text-red-400 truncate max-w-[45%]">
+                              {String(change.old)}
+                            </span>
+                            <span className="text-gray-300">→</span>
+                            <span className="text-green-600 font-medium truncate max-w-[45%]">
+                              {String(change.new)}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                ))}
+                  )}
+                  
+                  {!['APPROVE', 'REJECT', 'EDIT', 'BATCH_APPROVE'].includes(log.action) && log.details && (
+                    <pre className="text-xs text-gray-500 bg-gray-50 p-2 rounded mt-2 overflow-x-auto">
+                      {JSON.stringify(log.details, null, 2)}
+                    </pre>
+                  )}
+                </div>
               </div>
-            )}
-            
-            {!['APPROVE', 'REJECT', 'EDIT', 'BATCH_APPROVE'].includes(log.action) && log.details && (
-              <pre className="text-xs text-gray-500 bg-gray-50 p-2 rounded mt-2 overflow-x-auto">
-                {JSON.stringify(log.details, null, 2)}
-              </pre>
-            )}
+            ))}
           </div>
-        </div>
+        </section>
       ))}
     </div>
   );

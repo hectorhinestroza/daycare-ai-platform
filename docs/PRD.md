@@ -11,12 +11,12 @@
 
 This PRD defines the V1 build for the Daycare AI Platform — a standalone, AI-native childcare operations system. The product replaces the offshore VA + manual admin workflow with a voice-first AI pipeline: teachers speak, AI structures, admins review, parents receive beautiful narrative daily reports. No Chrome extension. No Brightwheel dependency. Full platform ownership with a defensible $20–200M exit path.
 
-|                    | OLD APPROACH (Abandoned)                                    | NEW APPROACH (This PRD)                                      |
-|--------------------|-------------------------------------------------------------|--------------------------------------------------------------|
-| **Architecture**   | Chrome extension injecting into Brightwheel DOM             | Standalone AI platform + parent portal + billing             |
-| **Risk**           | Violates Brightwheel ToS — killable overnight               | Full stack ownership, no third-party dependency              |
-| **Exit**           | $5–10M ceiling                                              | $20–200M potential                                           |
-| **Fundability**    | Not fundable at Seed                                        | Fundable                                                     |
+|                    | Approach
+|--------------------|------------------------------------------------------------- |
+| **Architecture**   | Standalone AI platform + parent portal + billing             |
+| **Risk**           | Full stack ownership, no third-party dependency              |
+| **Exit**           | $20–200M potential                                           |
+| **Fundability**    | Fundable                                                     |
 
 ---
 
