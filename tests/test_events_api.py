@@ -267,3 +267,85 @@ def test_edit_event_wrong_center(db_session):
         json={"child_name": "Hacked"},
     )
     assert resp.status_code == 404
+
+
+# ─── Batch Approve ───────────────────────────────────────────
+
+
+def test_batch_approve_events(db_session):
+    """Approve all pending events for a child at once."""
+    _create_event(db_session, center_id=CENTER_ID)
+    _create_event(db_session, center_id=CENTER_ID)
+    _create_event(db_session, center_id=CENTER_ID)
+
+    client = TestClient(app)
+    resp = client.post(
+        f"/api/events/{CENTER_ID}/batch-approve",
+        json={"child_name": "Jason"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["approved_count"] == 3
+    assert "Jason" in data["message"]
+
+    # Verify teacher queue is now empty
+    resp2 = client.get(f"/api/events/pending/teacher/{CENTER_ID}")
+    assert resp2.json() == []
+
+
+def test_batch_approve_no_matching_events(db_session):
+    """Batch approve with no matching child returns count 0."""
+    client = TestClient(app)
+    resp = client.post(
+        f"/api/events/{CENTER_ID}/batch-approve",
+        json={"child_name": "Nonexistent"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["approved_count"] == 0
+
+
+# ─── History ─────────────────────────────────────────────────
+
+
+def test_history_returns_approved_and_rejected(db_session):
+    """History shows approved and rejected events, not pending."""
+    eid1 = _create_event(db_session, status="PENDING")
+    eid2 = _create_event(db_session, status="PENDING")
+
+    # Approve one, reject another
+    client = TestClient(app)
+    client.post(f"/api/events/{CENTER_ID}/{eid1}/approve")
+    client.post(f"/api/events/{CENTER_ID}/{eid2}/reject")
+
+    resp = client.get(f"/api/events/history/{CENTER_ID}")
+    assert resp.status_code == 200
+    events = resp.json()
+    assert len(events) == 2
+    statuses = {e["status"] for e in events}
+    assert statuses == {"APPROVED", "REJECTED"}
+
+
+def test_history_filter_by_status(db_session):
+    """History can filter by status."""
+    eid1 = _create_event(db_session)
+    eid2 = _create_event(db_session)
+
+    client = TestClient(app)
+    client.post(f"/api/events/{CENTER_ID}/{eid1}/approve")
+    client.post(f"/api/events/{CENTER_ID}/{eid2}/reject")
+
+    resp = client.get(f"/api/events/history/{CENTER_ID}?status=APPROVED")
+    assert resp.status_code == 200
+    events = resp.json()
+    assert len(events) == 1
+    assert events[0]["status"] == "APPROVED"
+
+
+def test_history_empty(db_session):
+    """History is empty when no events have been reviewed."""
+    _create_event(db_session)  # still pending
+
+    client = TestClient(app)
+    resp = client.get(f"/api/events/history/{CENTER_ID}")
+    assert resp.status_code == 200
+    assert resp.json() == []

@@ -3,6 +3,8 @@
 Endpoints:
     GET  /api/events/pending/teacher/{center_id}   — teacher queue
     GET  /api/events/pending/director/{center_id}   — director queue (flagged)
+    GET  /api/events/history/{center_id}            — approved/rejected history
+    POST /api/events/{center_id}/batch-approve      — batch approve by child
     GET  /api/events/{center_id}/{event_id}         — single event detail
     POST /api/events/{center_id}/{event_id}/approve — approve event
     POST /api/events/{center_id}/{event_id}/reject  — reject event
@@ -21,7 +23,9 @@ from sqlalchemy.orm import Session
 from backend.storage.database import get_db
 from backend.storage.events_handlers import (
     approve_event,
+    batch_approve_events,
     get_event,
+    get_events_history,
     get_events_pending_director,
     get_events_pending_teacher,
     reject_event,
@@ -74,7 +78,16 @@ class ActionResponse(BaseModel):
     event: EventOut
 
 
-# ─── Endpoints ────────────────────────────────────────────────
+class BatchApproveRequest(BaseModel):
+    child_name: str
+
+
+class BatchApproveResponse(BaseModel):
+    message: str
+    approved_count: int
+
+
+# ─── Endpoints (order matters — specific paths before catch-all) ──
 
 
 @router.get("/pending/teacher/{center_id}", response_model=List[EventOut])
@@ -89,6 +102,37 @@ def list_director_queue(center_id: UUID, db: Session = Depends(get_db)):
     """Get all flagged events for director review."""
     events = get_events_pending_director(db, center_id)
     return events
+
+
+@router.get("/history/{center_id}", response_model=List[EventOut])
+def list_event_history(
+    center_id: UUID,
+    status: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+):
+    """Get approved/rejected events for the history view."""
+    events = get_events_history(db, center_id, status=status, limit=limit, offset=offset)
+    return events
+
+
+@router.post("/{center_id}/batch-approve", response_model=BatchApproveResponse)
+def batch_approve_endpoint(
+    center_id: UUID,
+    body: BatchApproveRequest,
+    db: Session = Depends(get_db),
+):
+    """Approve all pending events for a child at once."""
+    count = batch_approve_events(db, center_id, body.child_name)
+    logger.info(f"Batch approved {count} events for {body.child_name} in center {center_id}")
+    return BatchApproveResponse(
+        message=f"Approved {count} events for {body.child_name}",
+        approved_count=count,
+    )
+
+
+# ─── Catch-all routes (must come after specific paths) ────────
 
 
 @router.get("/{center_id}/{event_id}", response_model=EventOut)

@@ -32,3 +32,9 @@ scripts/seed_dev.py
 # Frontend
 node_modules/
 frontend/console/dist/
+
+# Dev docs (deep dives, competitive research — local only)
+docs/architecture_deep_dive.md
+docs/architecture_week2_db_logging.md
+docs/competitive_research.md
+docs/legal_agent_prompt.md

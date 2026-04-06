@@ -19,7 +19,7 @@ const TIER_BADGE = {
   teacher: { label: 'Teacher Review', className: 'badge-teacher' },
 };
 
-export default function EventCard({ event, centerId, onAction }) {
+export default function EventCard({ event, centerId, onAction, readOnly = false }) {
   const [editing, setEditing] = useState(false);
   const [editFields, setEditFields] = useState({
     child_name: event.child_name,
@@ -90,30 +90,45 @@ export default function EventCard({ event, centerId, onAction }) {
         </div>
       </div>
 
-      <div className="card-actions">
-        {editing ? (
-          <>
-            <button className="btn btn-approve" onClick={() => handleAction('edit')} disabled={loading}>
-              Save
-            </button>
-            <button className="btn btn-secondary" onClick={() => setEditing(false)} disabled={loading}>
-              Cancel
-            </button>
-          </>
-        ) : (
-          <>
-            <button className="btn btn-approve" onClick={() => handleAction('approve')} disabled={loading}>
-              ✅ Approve
-            </button>
-            <button className="btn btn-edit" onClick={() => setEditing(true)} disabled={loading}>
-              ✏️ Edit
-            </button>
-            <button className="btn btn-reject" onClick={() => handleAction('reject')} disabled={loading}>
-              ❌ Reject
-            </button>
-          </>
-        )}
-      </div>
+      {readOnly ? (
+        <div className="card-status-bar">
+          <span className={`status-badge status-${event.status.toLowerCase()}`}>
+            {event.status === 'APPROVED' ? '✅' : '❌'} {event.status}
+          </span>
+          {event.reviewed_at && (
+            <span className="reviewed-at">
+              {new Date(event.reviewed_at).toLocaleString([], {
+                month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+              })}
+            </span>
+          )}
+        </div>
+      ) : (
+        <div className="card-actions">
+          {editing ? (
+            <>
+              <button className="btn btn-approve" onClick={() => handleAction('edit')} disabled={loading}>
+                Save
+              </button>
+              <button className="btn btn-secondary" onClick={() => setEditing(false)} disabled={loading}>
+                Cancel
+              </button>
+            </>
+          ) : (
+            <>
+              <button className="btn btn-approve" onClick={() => handleAction('approve')} disabled={loading}>
+                ✅ Approve
+              </button>
+              <button className="btn btn-edit" onClick={() => setEditing(true)} disabled={loading}>
+                ✏️ Edit
+              </button>
+              <button className="btn btn-reject" onClick={() => handleAction('reject')} disabled={loading}>
+                ❌ Reject
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

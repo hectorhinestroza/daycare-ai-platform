@@ -191,6 +191,51 @@ def get_events_by_child(
     return q.order_by(Event.created_at.desc()).all()
 
 
+def batch_approve_events(
+    db: Session,
+    center_id: uuid.UUID,
+    child_name: str,
+    reviewed_by: Optional[uuid.UUID] = None,
+) -> int:
+    """Approve all pending events for a child. Returns count of approved events."""
+    now = datetime.now(UTC)
+    count = (
+        db.query(Event)
+        .filter(
+            Event.center_id == center_id,
+            Event.child_name == child_name,
+            Event.status == "PENDING",
+        )
+        .update(
+            {
+                Event.status: "APPROVED",
+                Event.reviewed_by: reviewed_by,
+                Event.reviewed_at: now,
+            },
+            synchronize_session="fetch",
+        )
+    )
+    db.commit()
+    return count
+
+
+def get_events_history(
+    db: Session,
+    center_id: uuid.UUID,
+    status: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> List[Event]:
+    """Get approved/rejected events for the history view with pagination."""
+    q = db.query(Event).filter(
+        Event.center_id == center_id,
+        Event.status != "PENDING",
+    )
+    if status:
+        q = q.filter(Event.status == status)
+    return q.order_by(Event.reviewed_at.desc()).limit(limit).offset(offset).all()
+
+
 # ─── Teacher Lookup ───────────────────────────────────────────
 
 

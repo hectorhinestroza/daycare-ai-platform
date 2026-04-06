@@ -99,8 +99,8 @@ Repo: https://github.com/hectorhinestroza/daycare-ai-platform
 ### Weeks 3–4: Admin Review Console
 | # | Title | Label | Status |
 |---|-------|-------|--------|
-| 6 | React PWA: Event Queue UI | week-3 | 🔲 Open |
-| 7 | Admin Approve / Edit / Reject Workflow | week-3 | 🔲 Open |
+| 6 | React PWA: Event Queue UI | week-3 | ✅ Done |
+| 7 | Admin Approve / Edit / Reject Workflow | week-3 | ✅ Done |
 | 8 | Activity Log and Audit Trail | week-4 | 🔲 Open |
 | 9 | Center Onboarding: Classrooms, Children, Parent Contacts | week-4 | 🔲 Open |
 

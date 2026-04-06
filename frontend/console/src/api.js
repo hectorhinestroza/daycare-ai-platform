@@ -37,3 +37,23 @@ export async function editEvent(centerId, eventId, updates) {
   if (!res.ok) throw new Error(`Failed to edit: ${res.status}`);
   return res.json();
 }
+
+export async function batchApprove(centerId, childName) {
+  const res = await fetch(`${API_BASE}/api/events/${centerId}/batch-approve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ child_name: childName }),
+  });
+  if (!res.ok) throw new Error(`Failed to batch approve: ${res.status}`);
+  return res.json();
+}
+
+export async function fetchHistory(centerId, { status, limit = 50, offset = 0 } = {}) {
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  params.set('limit', String(limit));
+  params.set('offset', String(offset));
+  const res = await fetch(`${API_BASE}/api/events/history/${centerId}?${params}`);
+  if (!res.ok) throw new Error(`Failed to fetch history: ${res.status}`);
+  return res.json();
+}

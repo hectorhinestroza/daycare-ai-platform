@@ -458,6 +458,160 @@ body {
   padding: 0 4px;
 }
 
+/* ─── Batch Approve ─────────────────────────────────────────── */
+
+.btn-batch-approve {
+  margin-left: auto;
+  padding: 4px 12px;
+  background: rgba(0, 200, 83, 0.15);
+  color: var(--approve);
+  border: 1px solid rgba(0, 200, 83, 0.3);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.btn-batch-approve:hover {
+  background: var(--approve);
+  color: #111;
+  transform: translateY(-1px);
+}
+
+/* ─── History Status Bar ────────────────────────────────────── */
+
+.card-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.status-badge {
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: var(--radius-sm);
+}
+
+.status-approved {
+  background: rgba(0, 200, 83, 0.12);
+  color: var(--approve);
+}
+
+.status-rejected {
+  background: rgba(255, 82, 82, 0.12);
+  color: var(--reject);
+}
+
+.reviewed-at {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* ─── View Toggle ───────────────────────────────────────────── */
+
+.view-toggle {
+  display: flex;
+  background: var(--bg-secondary);
+  border-radius: var(--radius);
+  padding: 3px;
+  gap: 2px;
+}
+
+/* ─── Toasts ────────────────────────────────────────────────── */
+
+.toast-container {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  min-width: 250px;
+  max-width: 400px;
+}
+
+.toast-success {
+  border-left: 3px solid var(--approve);
+}
+
+.toast-error {
+  border-left: 3px solid var(--reject);
+}
+
+.toast-info {
+  border-left: 3px solid var(--teacher-badge);
+}
+
+.toast-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.toast-message {
+  flex: 1;
+}
+
+.toast-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 4px;
+  font-size: 0.9rem;
+}
+
+.toast-close:hover {
+  color: var(--text-primary);
+}
+
+.toast-enter {
+  animation: toastIn 0.3s ease;
+}
+
+.toast-exit {
+  animation: toastOut 0.3s ease forwards;
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateX(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes toastOut {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(40px);
+  }
+}
+
 /* ─── Responsive ────────────────────────────────────────────── */
 
 @media (max-width: 640px) {
@@ -471,6 +625,10 @@ body {
     justify-content: center;
   }
 
+  .header-right {
+    flex-wrap: wrap;
+  }
+
   .card-actions {
     flex-wrap: wrap;
   }
@@ -478,5 +636,15 @@ body {
   .card-actions .btn {
     flex: 1;
     justify-content: center;
+  }
+
+  .toast-container {
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+  }
+
+  .toast {
+    min-width: auto;
   }
 }
