@@ -1,650 +1,104 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-/* ─── Design Tokens ─────────────────────────────────────────── */
-:root {
-  --bg-primary: #0f1117;
-  --bg-secondary: #1a1d27;
-  --bg-card: #21242f;
-  --bg-card-hover: #282c3a;
-  --text-primary: #e8eaed;
-  --text-secondary: #9aa0a6;
-  --text-muted: #6b7280;
-  --accent: #6c5ce7;
-  --accent-hover: #7c6ff7;
-  --approve: #00c853;
-  --approve-hover: #00e676;
-  --reject: #ff5252;
-  --reject-hover: #ff6e6e;
-  --edit: #ffc107;
-  --edit-hover: #ffd54f;
-  --warning: #ff9800;
-  --director-badge: #e040fb;
-  --teacher-badge: #40c4ff;
-  --border: rgba(255, 255, 255, 0.08);
-  --radius: 12px;
-  --radius-sm: 8px;
-  --shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
-  --transition: 0.2s ease;
+@layer base {
+  body {
+    background-color: #fef8f5;
+    color: #1d1b1a;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
 
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  color: var(--text-primary);
-  background: var(--bg-primary);
+  h1, h2, h3, h4 {
+    font-family: 'Noto Serif', serif;
+  }
+
+  .material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  }
 }
 
-*, *::before, *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+@layer components {
+  /* Glassmorphism for floating elements */
+  .glass-panel {
+    background: rgba(254, 248, 245, 0.7);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+
+  /* Japandi card — no border, tonal lift */
+  .japandi-card {
+    background-color: #ffffff;
+    transition: transform 0.2s ease;
+  }
+
+  .japandi-card:active {
+    transform: scale(0.98);
+  }
+
+  /* Primary CTA gradient */
+  .btn-primary {
+    @apply px-8 py-3 rounded-full bg-gradient-to-br from-[#8a4f36] to-[#d38b6e] text-white font-semibold shadow-lg hover:opacity-90 transition-opacity active:scale-95;
+  }
+
+  /* Secondary button */
+  .btn-secondary {
+    @apply px-6 py-3 rounded-full bg-surface-container-low text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors;
+  }
+
+  /* AI chip — glassmorphism */
+  .ai-chip {
+    @apply bg-secondary-fixed/50 backdrop-blur-md px-4 py-2 rounded-full text-on-secondary-fixed-variant text-sm font-medium flex items-center gap-2;
+    border: 1px solid rgba(83, 98, 84, 0.1);
+  }
+
+  /* Toast animations */
+  .toast-enter {
+    animation: toastIn 0.3s ease;
+  }
+
+  .toast-exit {
+    animation: toastOut 0.3s ease forwards;
+  }
+
+  /* Card slide-in */
+  .card-appear {
+    animation: slideIn 0.3s ease;
+  }
 }
 
-body {
-  min-height: 100vh;
-  background: var(--bg-primary);
+@layer utilities {
+  .font-headline {
+    font-family: 'Noto Serif', serif;
+  }
 }
 
-/* ─── App Layout ────────────────────────────────────────────── */
-
-.app {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 0 16px;
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(40px); }
+  to   { opacity: 1; transform: translateX(0); }
 }
 
-.app-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20px 0;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 24px;
-  position: sticky;
-  top: 0;
-  background: var(--bg-primary);
-  z-index: 100;
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.header-left h1 {
-  font-size: 1.4rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-
-.event-count {
-  background: var(--accent);
-  color: white;
-  padding: 2px 10px;
-  border-radius: 20px;
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-/* ─── Role Toggle ───────────────────────────────────────────── */
-
-.role-toggle {
-  display: flex;
-  background: var(--bg-secondary);
-  border-radius: var(--radius);
-  padding: 3px;
-  gap: 2px;
-}
-
-.toggle-btn {
-  padding: 8px 16px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 0.85rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all var(--transition);
-}
-
-.toggle-btn.active {
-  background: var(--accent);
-  color: white;
-  box-shadow: 0 2px 8px rgba(108, 92, 231, 0.3);
-}
-
-.toggle-btn:hover:not(.active) {
-  color: var(--text-primary);
-  background: var(--bg-card);
-}
-
-/* ─── Buttons ───────────────────────────────────────────────── */
-
-.btn {
-  padding: 8px 16px;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-size: 0.85rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all var(--transition);
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-approve {
-  background: var(--approve);
-  color: #111;
-}
-
-.btn-approve:hover:not(:disabled) {
-  background: var(--approve-hover);
-  transform: translateY(-1px);
-}
-
-.btn-reject {
-  background: var(--reject);
-  color: white;
-}
-
-.btn-reject:hover:not(:disabled) {
-  background: var(--reject-hover);
-  transform: translateY(-1px);
-}
-
-.btn-edit {
-  background: var(--edit);
-  color: #111;
-}
-
-.btn-edit:hover:not(:disabled) {
-  background: var(--edit-hover);
-  transform: translateY(-1px);
-}
-
-.btn-secondary {
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background: var(--bg-card-hover);
-  color: var(--text-primary);
-}
-
-.btn-refresh {
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
-  padding: 8px 12px;
-  font-size: 1rem;
-}
-
-.btn-refresh:hover:not(:disabled) {
-  background: var(--bg-card);
-  color: var(--text-primary);
-}
-
-/* ─── Event Groups ──────────────────────────────────────────── */
-
-.child-group {
-  margin-bottom: 32px;
-}
-
-.group-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin-bottom: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border);
-}
-
-.child-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--accent), var(--director-badge));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.85rem;
-  font-weight: 700;
-  color: white;
-  flex-shrink: 0;
-}
-
-.group-count {
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  margin-left: auto;
-}
-
-/* ─── Event Card ────────────────────────────────────────────── */
-
-.cards-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.event-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px;
-  transition: all var(--transition);
-  animation: slideIn 0.3s ease;
-}
-
-.event-card:hover {
-  background: var(--bg-card-hover);
-  border-color: rgba(255, 255, 255, 0.12);
-}
-
-.event-card.low-confidence {
-  border-left: 3px solid var(--warning);
-}
-
-.event-card.card-loading {
-  opacity: 0.6;
-  pointer-events: none;
+@keyframes toastOut {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(40px); }
 }
 
 @keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.card-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.event-icon {
-  font-size: 1.2rem;
-}
-
-.event-type {
-  font-size: 0.8rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  color: var(--text-secondary);
-  letter-spacing: 0.05em;
-}
-
-.badge {
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.badge-teacher {
-  background: rgba(64, 196, 255, 0.15);
-  color: var(--teacher-badge);
-}
-
-.badge-director {
-  background: rgba(224, 64, 251, 0.15);
-  color: var(--director-badge);
-}
-
-.badge-warning {
-  background: rgba(255, 152, 0, 0.15);
-  color: var(--warning);
-}
-
-.confidence {
-  margin-left: auto;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  font-weight: 500;
-}
-
-.card-body {
-  margin-bottom: 12px;
-}
-
-.child-name {
-  font-size: 1rem;
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-
-.event-details {
-  font-size: 0.9rem;
-  color: var(--text-secondary);
-  line-height: 1.4;
-}
-
-.card-meta {
-  display: flex;
-  gap: 12px;
-  margin-top: 8px;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-}
-
-.card-actions {
-  display: flex;
-  gap: 8px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-}
-
-/* ─── Edit Form ─────────────────────────────────────────────── */
-
-.edit-form {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.edit-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-  font-weight: 500;
-}
-
-.edit-form input,
-.edit-form textarea {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 8px 12px;
-  color: var(--text-primary);
-  font-size: 0.9rem;
-  font-family: inherit;
-  outline: none;
-  transition: border-color var(--transition);
-}
-
-.edit-form input:focus,
-.edit-form textarea:focus {
-  border-color: var(--accent);
-}
-
-/* ─── States ────────────────────────────────────────────────── */
-
-.loading-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 80px 0;
-  color: var(--text-secondary);
-  gap: 16px;
-}
-
-.spinner {
-  width: 36px;
-  height: 36px;
-  border: 3px solid var(--border);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
 
-.empty-state {
-  text-align: center;
-  padding: 80px 20px;
-  color: var(--text-secondary);
-}
-
-.empty-icon {
-  font-size: 3rem;
-  margin-bottom: 16px;
-}
-
-.empty-state h2 {
-  font-size: 1.3rem;
-  color: var(--text-primary);
-  margin-bottom: 8px;
-}
-
-.error-banner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: rgba(255, 82, 82, 0.12);
-  border: 1px solid rgba(255, 82, 82, 0.3);
-  border-radius: var(--radius-sm);
-  padding: 12px 16px;
-  margin-bottom: 20px;
-  color: var(--reject);
-  font-size: 0.85rem;
-}
-
-.error-banner button {
-  background: none;
-  border: none;
-  color: var(--reject);
-  cursor: pointer;
-  font-size: 1rem;
-  padding: 0 4px;
-}
-
-/* ─── Batch Approve ─────────────────────────────────────────── */
-
-.btn-batch-approve {
-  margin-left: auto;
-  padding: 4px 12px;
-  background: rgba(0, 200, 83, 0.15);
-  color: var(--approve);
-  border: 1px solid rgba(0, 200, 83, 0.3);
-  border-radius: var(--radius-sm);
-  font-size: 0.75rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all var(--transition);
-}
-
-.btn-batch-approve:hover {
-  background: var(--approve);
-  color: #111;
-  transform: translateY(-1px);
-}
-
-/* ─── History Status Bar ────────────────────────────────────── */
-
-.card-status-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-}
-
-.status-badge {
-  font-size: 0.8rem;
-  font-weight: 600;
-  padding: 4px 12px;
-  border-radius: var(--radius-sm);
-}
-
-.status-approved {
-  background: rgba(0, 200, 83, 0.12);
-  color: var(--approve);
-}
-
-.status-rejected {
-  background: rgba(255, 82, 82, 0.12);
-  color: var(--reject);
-}
-
-.reviewed-at {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-}
-
-/* ─── View Toggle ───────────────────────────────────────────── */
-
-.view-toggle {
-  display: flex;
-  background: var(--bg-secondary);
-  border-radius: var(--radius);
-  padding: 3px;
-  gap: 2px;
-}
-
-/* ─── Toasts ────────────────────────────────────────────────── */
-
-.toast-container {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  z-index: 1000;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.toast {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 16px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow);
-  font-size: 0.85rem;
-  color: var(--text-primary);
-  min-width: 250px;
-  max-width: 400px;
-}
-
-.toast-success {
-  border-left: 3px solid var(--approve);
-}
-
-.toast-error {
-  border-left: 3px solid var(--reject);
-}
-
-.toast-info {
-  border-left: 3px solid var(--teacher-badge);
-}
-
-.toast-icon {
-  font-size: 1rem;
-  flex-shrink: 0;
-}
-
-.toast-message {
-  flex: 1;
-}
-
-.toast-close {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 0 4px;
-  font-size: 0.9rem;
-}
-
-.toast-close:hover {
-  color: var(--text-primary);
-}
-
-.toast-enter {
-  animation: toastIn 0.3s ease;
-}
-
-.toast-exit {
-  animation: toastOut 0.3s ease forwards;
-}
-
-@keyframes toastIn {
-  from {
-    opacity: 0;
-    transform: translateX(40px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes toastOut {
-  from {
-    opacity: 1;
-    transform: translateX(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateX(40px);
-  }
-}
-
-/* ─── Responsive ────────────────────────────────────────────── */
-
-@media (max-width: 640px) {
-  .app-header {
-    flex-direction: column;
-    gap: 12px;
-    align-items: stretch;
-  }
-
-  .header-left, .header-right {
-    justify-content: center;
-  }
-
-  .header-right {
-    flex-wrap: wrap;
-  }
-
-  .card-actions {
-    flex-wrap: wrap;
-  }
-
-  .card-actions .btn {
-    flex: 1;
-    justify-content: center;
-  }
-
-  .toast-container {
-    left: 16px;
-    right: 16px;
-    bottom: 16px;
-  }
-
-  .toast {
-    min-width: auto;
-  }
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(138, 79, 54, 0.2);
+  border-top-color: #8a4f36;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 }

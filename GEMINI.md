@@ -101,7 +101,7 @@ Repo: https://github.com/hectorhinestroza/daycare-ai-platform
 |---|-------|-------|--------|
 | 6 | React PWA: Event Queue UI | week-3 | ✅ Done |
 | 7 | Admin Approve / Edit / Reject Workflow | week-3 | ✅ Done |
-| 8 | Activity Log and Audit Trail | week-4 | 🔲 Open |
+| 8 | Activity Log and Audit Trail | week-4 | ✅ Done |
 | 9 | Center Onboarding: Classrooms, Children, Parent Contacts | week-4 | 🔲 Open |
 
 ### Weeks 3–4: Legal Engineering (parallel track)
@@ -186,3 +186,26 @@ PARENT PORTAL (mobile web, magic link)
 ├── Today's Live Feed (real-time event cards + photos as approved)
 ├── End-of-Day Recap (AI narrative, configurable delivery time, default 5:30 PM)
 └── History (calendar strip → past day timelines → compliance audit)
+
+
+Use the DESIGN.md for the design philosophy of the application and the following instructions also contain the mocks for the screens that we will be building.
+
+## Stitch Instructions
+
+Get the images and code for the following Stitch project's screens:
+
+## Project
+
+ID: 7031162035231000192
+
+## Screens:
+1. Teacher Portal: Review Queue
+    ID: dd014066c58a44ca9dab76890946a2f8
+
+2. Parent Portal: Live Feed & Report
+    ID: 8b875b6f2eca46c6977da6e6c3effcce
+
+3. Director Portal: Flagged Events & Billing
+    ID: fa747a4da27f4ac28f791afcf1b854e1
+
+Use a utility like `curl -L` to download the hosted URLs.
