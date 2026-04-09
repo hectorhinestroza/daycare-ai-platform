@@ -102,7 +102,7 @@ Repo: https://github.com/hectorhinestroza/daycare-ai-platform
 | 6 | React PWA: Event Queue UI | week-3 | ✅ Done |
 | 7 | Admin Approve / Edit / Reject Workflow | week-3 | ✅ Done |
 | 8 | Activity Log and Audit Trail | week-4 | ✅ Done |
-| 9 | Center Onboarding: Classrooms, Children, Parent Contacts | week-4 | 🔲 Open |
+| 9 | Center Onboarding: Classrooms, Children, Parent Contacts | week-4 | ✅ Done |
 
 ### Weeks 3–4: Legal Engineering (parallel track)
 | # | Title | Label | Status |
