@@ -24,6 +24,7 @@ from backend.storage.database import get_db
 from backend.storage.events_handlers import (
     approve_event,
     batch_approve_events,
+    get_approved_events_for_child,
     get_event,
     get_events_history,
     get_events_pending_director,
@@ -130,6 +131,19 @@ def batch_approve_endpoint(
         message=f"Approved {count} events for {body.child_name}",
         approved_count=count,
     )
+
+
+@router.get("/feed/{center_id}/{child_id}", response_model=List[EventOut])
+def parent_feed(
+    center_id: UUID,
+    child_id: UUID,
+    limit: int = 50,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+):
+    """Parent feed — approved events for a specific child."""
+    events = get_approved_events_for_child(db, center_id, child_id, limit=limit, offset=offset)
+    return events
 
 
 # ─── Catch-all routes (must come after specific paths) ────────

@@ -217,6 +217,28 @@ def get_events_by_child(
     return q.order_by(Event.created_at.desc()).all()
 
 
+def get_approved_events_for_child(
+    db: Session,
+    center_id: uuid.UUID,
+    child_id: uuid.UUID,
+    limit: int = 50,
+    offset: int = 0,
+) -> List[Event]:
+    """Get approved events for a specific child (parent feed)."""
+    return (
+        db.query(Event)
+        .filter(
+            Event.center_id == center_id,
+            Event.child_id == child_id,
+            Event.status == "APPROVED",
+        )
+        .order_by(Event.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
+
+
 def batch_approve_events(
     db: Session,
     center_id: uuid.UUID,
