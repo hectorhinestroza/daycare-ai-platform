@@ -49,11 +49,11 @@ app.add_middleware(GlobalExceptionMiddleware)
 app.add_middleware(RequestTimingMiddleware)
 app.add_middleware(RequestIDMiddleware)
 
-# CORS — allow React dev server and mobile device testing
+# CORS — allow all origins (credentials=False required for wildcard origin)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for dev testing
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
