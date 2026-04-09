@@ -27,8 +27,8 @@ const DIRECTOR_NAV = [
   { key: 'activity', icon: 'bar_chart',    label: 'Activity' },
 ];
 
-function App() {
-  const [role, setRole] = useState('teacher');
+function App({ forcedRole, centerId: propscenterId }) {
+  const [role, setRole] = useState(forcedRole || 'teacher');
   const [view, setView] = useState('pending');
 
   // Enforce role-based view access
@@ -44,7 +44,8 @@ function App() {
   const [toasts, setToasts] = useState([]);
 
   const params = new URLSearchParams(window.location.search);
-  const centerId = params.get('center') || '';
+  const centerId = propscenterId || params.get('center') || '';
+  const isRouted = !!forcedRole;
 
   // ─── Toast helpers ─────────────────────────────────────────
   function addToast(message, type = 'success') {
@@ -154,9 +155,9 @@ function App() {
         <div className="flex items-center gap-3">
           {/* Role avatar / switcher */}
           <button
-            onClick={() => setRole(role === 'teacher' ? 'director' : 'teacher')}
-            title={`Switch to ${role === 'teacher' ? 'Director' : 'Teacher'} view`}
-            className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-primary font-semibold text-sm border border-outline-variant/5 hover:bg-surface-container-high transition-all active:scale-95"
+            onClick={isRouted ? undefined : () => setRole(role === 'teacher' ? 'director' : 'teacher')}
+            title={isRouted ? role : `Switch to ${role === 'teacher' ? 'Director' : 'Teacher'} view`}
+            className={`w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-primary font-semibold text-sm border border-outline-variant/5 transition-all ${isRouted ? '' : 'hover:bg-surface-container-high active:scale-95 cursor-pointer'}`}
           >
             {role === 'teacher' ? 'T' : 'D'}
           </button>

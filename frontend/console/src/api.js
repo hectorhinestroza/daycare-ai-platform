@@ -69,6 +69,23 @@ export async function fetchActivityLog(centerId, { action, eventId, limit = 50, 
   return res.json();
 }
 
+// ─── Parent Feed ────────────────────────────────────────────
+
+export async function fetchParentFeed(centerId, childId, { limit = 50, offset = 0 } = {}) {
+  const params = new URLSearchParams();
+  params.set('limit', String(limit));
+  params.set('offset', String(offset));
+  const res = await fetch(`${API_BASE}/api/events/feed/${centerId}/${childId}?${params}`);
+  if (!res.ok) throw new Error(`Failed to fetch feed: ${res.status}`);
+  return res.json();
+}
+
+export async function fetchChildPublic(centerId, childId) {
+  const res = await fetch(`${API_BASE}/api/children/${centerId}/${childId}`);
+  if (!res.ok) throw new Error(`Failed to fetch child: ${res.status}`);
+  return res.json();
+}
+
 // ─── Onboarding: Rooms ──────────────────────────────────────
 
 export async function fetchRooms(centerId) {
