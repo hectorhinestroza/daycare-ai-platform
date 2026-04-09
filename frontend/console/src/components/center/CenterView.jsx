@@ -2,10 +2,12 @@ import { useState, useEffect, useCallback } from 'react';
 import { fetchRooms, fetchTeachers } from '../../api';
 import ChildrenPanel from './ChildrenPanel';
 import RoomsPanel from './RoomsPanel';
+import TeachersPanel from './TeachersPanel';
 
 const SUB_TABS = [
-  { key: 'children', label: 'Children', icon: 'child_care' },
-  { key: 'rooms',    label: 'Rooms',    icon: 'meeting_room' },
+  { key: 'children', label: 'Children',  icon: 'child_care' },
+  { key: 'rooms',    label: 'Rooms',     icon: 'meeting_room' },
+  { key: 'teachers', label: 'Teachers',  icon: 'school' },
 ];
 
 export default function CenterView({ centerId, addToast }) {
@@ -76,6 +78,14 @@ export default function CenterView({ centerId, addToast }) {
           centerId={centerId}
           rooms={rooms}
           addToast={addToast}
+        />
+      ) : subView === 'teachers' ? (
+        <TeachersPanel
+          centerId={centerId}
+          rooms={rooms}
+          teachers={teachers}
+          addToast={addToast}
+          onTeachersChange={loadSharedData}
         />
       ) : (
         <RoomsPanel

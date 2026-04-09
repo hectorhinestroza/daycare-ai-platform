@@ -129,6 +129,26 @@ export async function fetchTeachers(centerId) {
   return res.json();
 }
 
+export async function createTeacher(centerId, data) {
+  const res = await fetch(`${API_BASE}/api/teachers/${centerId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(`Failed to create teacher: ${res.status}`);
+  return res.json();
+}
+
+export async function updateTeacher(centerId, teacherId, updates) {
+  const res = await fetch(`${API_BASE}/api/teachers/${centerId}/${teacherId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) throw new Error(`Failed to update teacher: ${res.status}`);
+  return res.json();
+}
+
 // ─── Onboarding: Children ───────────────────────────────────
 
 export async function fetchChildren(centerId, { room_id, status } = {}) {
