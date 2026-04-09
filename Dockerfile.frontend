@@ -1,0 +1,26 @@
+FROM node:20-alpine AS build
+
+WORKDIR /app
+
+COPY frontend/console/package.json frontend/console/package-lock.json ./
+RUN npm ci
+
+COPY frontend/console/ .
+
+ARG VITE_API_URL
+ENV VITE_API_URL=${VITE_API_URL}
+
+RUN npm run build
+
+# Serve with lightweight static server
+FROM node:20-alpine AS runtime
+
+RUN npm install -g serve@14
+
+COPY --from=build /app/dist /app/dist
+
+ENV PORT=3000
+EXPOSE ${PORT}
+
+# -s flag enables SPA fallback (all routes → index.html)
+CMD serve -s /app/dist -l ${PORT}
