@@ -68,3 +68,106 @@ export async function fetchActivityLog(centerId, { action, eventId, limit = 50, 
   if (!res.ok) throw new Error(`Failed to fetch activity log: ${res.status}`);
   return res.json();
 }
+
+// ─── Onboarding: Rooms ──────────────────────────────────────
+
+export async function fetchRooms(centerId) {
+  const res = await fetch(`${API_BASE}/api/rooms/${centerId}`);
+  if (!res.ok) throw new Error(`Failed to fetch rooms: ${res.status}`);
+  return res.json();
+}
+
+export async function createRoom(centerId, name) {
+  const res = await fetch(`${API_BASE}/api/rooms/${centerId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error(`Failed to create room: ${res.status}`);
+  return res.json();
+}
+
+export async function updateRoom(centerId, roomId, name) {
+  const res = await fetch(`${API_BASE}/api/rooms/${centerId}/${roomId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error(`Failed to update room: ${res.status}`);
+  return res.json();
+}
+
+export async function deleteRoom(centerId, roomId) {
+  const res = await fetch(`${API_BASE}/api/rooms/${centerId}/${roomId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error(`Failed to delete room: ${res.status}`);
+}
+
+// ─── Onboarding: Teachers ───────────────────────────────────
+
+export async function fetchTeachers(centerId) {
+  const res = await fetch(`${API_BASE}/api/teachers/${centerId}`);
+  if (!res.ok) throw new Error(`Failed to fetch teachers: ${res.status}`);
+  return res.json();
+}
+
+// ─── Onboarding: Children ───────────────────────────────────
+
+export async function fetchChildren(centerId, { room_id, status } = {}) {
+  const params = new URLSearchParams();
+  if (room_id) params.set('room_id', room_id);
+  if (status) params.set('status', status);
+  const qs = params.toString();
+  const res = await fetch(`${API_BASE}/api/children/${centerId}${qs ? `?${qs}` : ''}`);
+  if (!res.ok) throw new Error(`Failed to fetch children: ${res.status}`);
+  return res.json();
+}
+
+export async function fetchChild(centerId, childId) {
+  const res = await fetch(`${API_BASE}/api/children/${centerId}/${childId}`);
+  if (!res.ok) throw new Error(`Failed to fetch child: ${res.status}`);
+  return res.json();
+}
+
+export async function createChild(centerId, data) {
+  const res = await fetch(`${API_BASE}/api/children/${centerId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(`Failed to enroll child: ${res.status}`);
+  return res.json();
+}
+
+export async function updateChild(centerId, childId, updates) {
+  const res = await fetch(`${API_BASE}/api/children/${centerId}/${childId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) throw new Error(`Failed to update child: ${res.status}`);
+  return res.json();
+}
+
+// ─── Onboarding: Contacts ───────────────────────────────────
+
+export async function addContact(centerId, childId, data) {
+  const res = await fetch(`${API_BASE}/api/children/${centerId}/${childId}/contacts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(`Failed to add contact: ${res.status}`);
+  return res.json();
+}
+
+export async function updateContact(centerId, contactId, updates) {
+  const res = await fetch(`${API_BASE}/api/contacts/${centerId}/${contactId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) throw new Error(`Failed to update contact: ${res.status}`);
+  return res.json();
+}

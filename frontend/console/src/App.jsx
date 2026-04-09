@@ -3,6 +3,7 @@ import EventCard from './components/EventCard';
 import EmptyState from './components/EmptyState';
 import Toast from './components/Toast';
 import ActivityLog from './components/ActivityLog';
+import CenterView from './components/center/CenterView';
 import {
   fetchTeacherQueue,
   fetchDirectorQueue,
@@ -22,6 +23,7 @@ const TEACHER_NAV = [
 const DIRECTOR_NAV = [
   { key: 'pending',  icon: 'auto_awesome', label: 'Queue' },
   { key: 'history',  icon: 'history',      label: 'History' },
+  { key: 'center',   icon: 'apartment',    label: 'Center' },
   { key: 'activity', icon: 'bar_chart',    label: 'Activity' },
 ];
 
@@ -31,7 +33,7 @@ function App() {
 
   // Enforce role-based view access
   useEffect(() => {
-    if (role === 'teacher' && view === 'activity') {
+    if (role === 'teacher' && (view === 'activity' || view === 'center')) {
       setView('pending');
     }
   }, [role, view]);
@@ -61,7 +63,7 @@ function App() {
       setLoading(false);
       return;
     }
-    if (view === 'activity') return;
+    if (view === 'activity' || view === 'center') return;
 
     setLoading(true);
     setError(null);
@@ -148,13 +150,13 @@ function App() {
   return (
     <div className="min-h-screen bg-surface">
       {/* ── Top App Bar ── */}
-      <header className="bg-surface/80 backdrop-blur-xl flex justify-between items-center w-full px-6 py-4 fixed top-0 z-50 border-b border-outline-variant/10">
+      <header className="bg-surface/80 backdrop-blur-xl flex justify-between items-center w-full px-6 py-4 fixed top-0 z-50">
         <div className="flex items-center gap-3">
           {/* Role avatar / switcher */}
           <button
             onClick={() => setRole(role === 'teacher' ? 'director' : 'teacher')}
             title={`Switch to ${role === 'teacher' ? 'Director' : 'Teacher'} view`}
-            className="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center text-primary font-semibold text-sm border border-outline-variant/15 hover:bg-surface-container-highest transition-colors"
+            className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-primary font-semibold text-sm border border-outline-variant/5 hover:bg-surface-container-high transition-all active:scale-95"
           >
             {role === 'teacher' ? 'T' : 'D'}
           </button>
@@ -189,7 +191,9 @@ function App() {
           </div>
         )}
 
-        {view === 'activity' ? (
+        {view === 'center' ? (
+          <CenterView centerId={centerId} addToast={addToast} />
+        ) : view === 'activity' ? (
           <ActivityLog centerId={centerId} />
         ) : loading && events.length === 0 ? (
           /* Loading state */
@@ -271,7 +275,7 @@ function App() {
       </main>
 
       {/* ── Bottom Nav ── */}
-      <nav className="fixed bottom-0 left-0 w-full flex justify-around items-center px-4 pb-6 pt-3 glass-panel z-50 rounded-t-lg shadow-ambient-up border-t border-outline-variant/15">
+      <nav className="fixed bottom-0 left-0 w-full flex justify-around items-center px-4 pb-8 pt-4 glass-panel z-50 rounded-t-[2.5rem] shadow-ambient-up">
         {nav.map((item) => {
           const isActive = view === item.key;
           return (

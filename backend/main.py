@@ -49,10 +49,10 @@ app.add_middleware(GlobalExceptionMiddleware)
 app.add_middleware(RequestTimingMiddleware)
 app.add_middleware(RequestIDMiddleware)
 
-# CORS — allow React dev server
+# CORS — allow React dev server and mobile device testing
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=["*"],  # Allow all origins for dev testing
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

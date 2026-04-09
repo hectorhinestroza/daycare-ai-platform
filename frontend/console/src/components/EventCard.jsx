@@ -44,10 +44,12 @@ export default function EventCard({ event, onAction, readOnly = false }) {
 
   return (
     <div
-      className={`japandi-card p-6 rounded-lg shadow-ambient border border-outline-variant/10 relative overflow-hidden card-appear ${
+      className={`japandi-card p-6 rounded-lg shadow-ambient relative overflow-hidden card-appear ${
         loading ? 'opacity-60 pointer-events-none' : ''
       }`}
     >
+      {/* 5% border for high-end definition without boxiness */}
+      <div className="absolute inset-0 rounded-lg border border-outline-variant/5 pointer-events-none" />
       {/* Left accent strip */}
       <div className={`absolute top-0 left-0 w-1 h-full ${meta.accentClass}`} />
 
