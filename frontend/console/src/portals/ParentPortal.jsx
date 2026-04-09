@@ -143,7 +143,7 @@ export default function ParentPortal({ centerId, childId }) {
           </div>
         ) : (
           <div className="space-y-8">
-            {dayGroups.map((group) => (
+            {dayGroups.map((group, idx) => (
               <section key={group.date}>
                 {/* Date header */}
                 <div className="flex items-center gap-3 mb-4">
@@ -152,6 +152,11 @@ export default function ParentPortal({ centerId, childId }) {
                     {group.events.length} {group.events.length === 1 ? 'update' : 'updates'}
                   </span>
                 </div>
+
+                {/* Daily summary for today */}
+                {idx === 0 && group.events.length >= 2 && (
+                  <DailySummary events={group.events} childName={child?.name} />
+                )}
 
                 {/* Timeline */}
                 <div className="space-y-3">
@@ -198,6 +203,46 @@ function ParentEventCard({ event }) {
         {event.details && (
           <p className="text-sm text-on-surface leading-relaxed">{event.details}</p>
         )}
+      </div>
+    </div>
+  );
+}
+
+function DailySummary({ events, childName }) {
+  const typeCounts = {};
+  for (const e of events) {
+    typeCounts[e.event_type] = (typeCounts[e.event_type] || 0) + 1;
+  }
+
+  const summaryParts = [];
+  const tracked = ['food', 'nap', 'activity', 'potty'];
+  const labels = { food: 'meal', nap: 'nap', activity: 'activity', potty: 'potty break' };
+  let trackedTotal = 0;
+  for (const key of tracked) {
+    const count = typeCounts[key];
+    if (count) {
+      trackedTotal += count;
+      const label = labels[key];
+      summaryParts.push(`${count} ${count > 1 ? (key === 'activity' ? 'activities' : label + 's') : label}`);
+    }
+  }
+  const otherCount = events.length - trackedTotal;
+  if (otherCount > 0) summaryParts.push(`${otherCount} other update${otherCount > 1 ? 's' : ''}`);
+
+  const firstName = childName?.split(' ')[0] || 'Your child';
+
+  return (
+    <div className="glass-panel rounded-lg p-4 mb-4">
+      <div className="flex items-start gap-3">
+        <span className="material-symbols-outlined text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>
+          auto_awesome
+        </span>
+        <div>
+          <p className="text-sm font-medium text-on-surface mb-1">Daily Snapshot</p>
+          <p className="text-sm text-on-surface-variant leading-relaxed">
+            {firstName} has had {summaryParts.join(', ')} so far today.
+          </p>
+        </div>
       </div>
     </div>
   );
