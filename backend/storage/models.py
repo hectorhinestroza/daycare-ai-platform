@@ -16,8 +16,10 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     String,
     Text,
+    func,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -120,6 +122,11 @@ class Child(Base):
     events = relationship("Event", back_populates="child")
     parent_contacts = relationship("ParentContact", back_populates="child", cascade="all, delete-orphan")
 
+    # Functional index for case-insensitive name lookup within a center
+    __table_args__ = (
+        Index("ix_children_center_name_lower", "center_id", func.lower(name)),
+    )
+
 
 # ─── Parent Contacts ──────────────────────────────────────────
 
@@ -221,6 +228,7 @@ class ActivityLog(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     center_id = Column(UUID(as_uuid=True), ForeignKey("centers.id"), nullable=False)
     event_id = Column(UUID(as_uuid=True), ForeignKey("events.id"), nullable=True)
+    child_id = Column(UUID(as_uuid=True), ForeignKey("children.id"), nullable=True)
     actor_id = Column(UUID(as_uuid=True), nullable=True)  # teacher or admin who acted
     actor_type = Column(String(20), nullable=False, default="system")  # teacher | director | system
     action = Column(String(30), nullable=False)  # APPROVE | REJECT | EDIT | BATCH_APPROVE | CREATE
@@ -229,3 +237,4 @@ class ActivityLog(Base):
 
     center = relationship("Center")
     event = relationship("Event")
+    child = relationship("Child")

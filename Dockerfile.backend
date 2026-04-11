@@ -12,9 +12,10 @@ COPY schemas/ schemas/
 COPY alembic/ alembic/
 COPY alembic.ini .
 
-# Railway injects PORT
-ENV PORT=8000
+# Startup script: stamp baseline if Alembic is untracked, then migrate
+COPY scripts/start.sh .
+RUN chmod +x start.sh
 
-EXPOSE ${PORT}
+EXPOSE 8080
 
-CMD uvicorn backend.main:app --host 0.0.0.0 --port ${PORT}
+CMD ["./start.sh"]

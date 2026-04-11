@@ -122,13 +122,23 @@ def approve_event(
     center_id: uuid.UUID,
     reviewed_by: Optional[uuid.UUID] = None,
 ) -> Optional[Event]:
-    """Approve an event (teacher or director)."""
+    """Approve an event (teacher or director).
+
+    Also resolves child_id if not already set (best-effort name match).
+    """
     event = get_event(db, event_id, center_id)
     if not event:
         return None
     event.status = "APPROVED"
     event.reviewed_by = reviewed_by
     event.reviewed_at = datetime.now(UTC)
+
+    # Resolve child_id at approval time if still unset
+    if not event.child_id and event.child_name:
+        child = get_child_by_name(db, center_id, event.child_name)
+        if child:
+            event.child_id = child.id
+
     db.commit()
     db.refresh(event)
     log_activity(
@@ -136,6 +146,7 @@ def approve_event(
         center_id,
         "APPROVE",
         event_id=event_id,
+        child_id=event.child_id,
         actor_id=reviewed_by,
         details={"child_name": event.child_name, "event_type": event.event_type},
     )
@@ -162,6 +173,7 @@ def reject_event(
         center_id,
         "REJECT",
         event_id=event_id,
+        child_id=event.child_id,
         actor_id=reviewed_by,
         details={"child_name": event.child_name, "event_type": event.event_type},
     )
@@ -196,6 +208,7 @@ def update_event(
         center_id,
         "EDIT",
         event_id=event_id,
+        child_id=event.child_id,
         details={"changes": {k: {"old": str(v), "new": str(updates[k])} for k, v in old_values.items()}},
     )
     return event
@@ -224,13 +237,26 @@ def get_approved_events_for_child(
     limit: int = 50,
     offset: int = 0,
 ) -> List[Event]:
-    """Get approved events for a specific child (parent feed)."""
+    """Get approved events for a specific child (parent feed).
+
+    Matches on child_id OR child_name (case-insensitive) to handle events
+    where child_id was not resolved at extraction time.
+    """
+    from sqlalchemy import or_, func
+
+    child = db.query(Child).filter(Child.id == child_id, Child.center_id == center_id).first()
+    if not child:
+        return []
+
     return (
         db.query(Event)
         .filter(
             Event.center_id == center_id,
-            Event.child_id == child_id,
             Event.status == "APPROVED",
+            or_(
+                Event.child_id == child_id,
+                func.lower(Event.child_name) == func.lower(child.name),
+            ),
         )
         .order_by(Event.created_at.desc())
         .limit(limit)
@@ -265,10 +291,12 @@ def batch_approve_events(
     )
     db.commit()
     if count > 0:
+        child = get_child_by_name(db, center_id, child_name)
         log_activity(
             db,
             center_id,
             "BATCH_APPROVE",
+            child_id=child.id if child else None,
             actor_id=reviewed_by,
             details={"child_name": child_name, "count": count},
         )
@@ -309,6 +337,37 @@ def get_children_by_center(db: Session, center_id: uuid.UUID) -> List[Child]:
 
 
 def get_child_by_name(db: Session, center_id: uuid.UUID, name: str) -> Optional[Child]:
-    """Basic fuzzy/exact name lookup (System of Record resolution)."""
-    # V1: Exact match (case-insensitive)
-    return db.query(Child).filter(Child.center_id == center_id, Child.name.ilike(name)).first()
+    """Fuzzy name lookup for child resolution.
+
+    Three-pass strategy:
+      1. Exact case-insensitive match ("Annie Johnson" → "Annie Johnson")
+      2. First-name / prefix match ("Annie" → "Annie Johnson")
+      3. Ambiguity guard: if multiple children match pass 2, return None
+         (better to flag for director review than silently pick the wrong child)
+    """
+    if not name or not name.strip():
+        return None
+
+    name = name.strip()
+    base_q = db.query(Child).filter(Child.center_id == center_id)
+
+    # Pass 1: exact case-insensitive
+    exact = base_q.filter(Child.name.ilike(name)).first()
+    if exact:
+        return exact
+
+    # Pass 2: prefix match — name appears at the start of the full name
+    prefix_matches = base_q.filter(Child.name.ilike(f"{name} %")).all()
+
+    # Guard against ambiguity — two "Annies" in the same center
+    if len(prefix_matches) == 1:
+        return prefix_matches[0]
+
+    # Pass 3: contains match as last resort (e.g. middle name used)
+    if not prefix_matches:
+        contains_matches = base_q.filter(Child.name.ilike(f"% {name} %")).all()
+        if len(contains_matches) == 1:
+            return contains_matches[0]
+
+    # Ambiguous or no match — return None, let event go to director review
+    return None
