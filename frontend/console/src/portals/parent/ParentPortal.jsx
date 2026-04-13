@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { fetchParentFeed, fetchChildPublic } from '../api';
+import { fetchParentFeed, fetchChildPublic } from '../../api';
 
 const EVENT_ICON = {
   food: 'restaurant',

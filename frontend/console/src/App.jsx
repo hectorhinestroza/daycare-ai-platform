@@ -1,18 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
-import EventCard from './components/EventCard';
-import EmptyState from './components/EmptyState';
-import Toast from './components/Toast';
-import ActivityLog from './components/ActivityLog';
-import CenterView from './components/center/CenterView';
-import {
-  fetchTeacherQueue,
-  fetchDirectorQueue,
-  fetchHistory,
-  approveEvent,
-  rejectEvent,
-  editEvent,
-  batchApprove,
-} from './api';
+import { useState, useEffect } from 'react';
+import TeacherQueue from './portals/teacher/TeacherQueue';
+import DirectorDashboard from './portals/director/DirectorDashboard';
+import HistoryView from './features/events/HistoryView';
+import ActivityLog from './features/events/ActivityLog';
+import CenterView from './features/center/CenterView';
+import Toast from './components/ui/Toast';
 
 // Bottom nav config per role
 const TEACHER_NAV = [
@@ -30,6 +22,11 @@ const DIRECTOR_NAV = [
 function App({ forcedRole, centerId: propscenterId }) {
   const [role, setRole] = useState(forcedRole || 'teacher');
   const [view, setView] = useState('pending');
+  const [toasts, setToasts] = useState([]);
+
+  const params = new URLSearchParams(window.location.search);
+  const centerId = propscenterId || params.get('center') || '';
+  const isRouted = !!forcedRole;
 
   // Enforce role-based view access
   useEffect(() => {
@@ -38,16 +35,7 @@ function App({ forcedRole, centerId: propscenterId }) {
     }
   }, [role, view]);
 
-  const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [toasts, setToasts] = useState([]);
-
-  const params = new URLSearchParams(window.location.search);
-  const centerId = propscenterId || params.get('center') || '';
-  const isRouted = !!forcedRole;
-
-  // ─── Toast helpers ─────────────────────────────────────────
+  // Toast Helpers
   function addToast(message, type = 'success') {
     const id = Date.now();
     setToasts((prev) => [...prev, { id, message, type }]);
@@ -57,96 +45,9 @@ function App({ forcedRole, centerId: propscenterId }) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }
 
-  // ─── Data loading ──────────────────────────────────────────
-  const loadEvents = useCallback(async () => {
-    if (!centerId) {
-      setError('No center_id provided. Add ?center=YOUR_CENTER_ID to the URL.');
-      setLoading(false);
-      return;
-    }
-    if (view === 'activity' || view === 'center') return;
-
-    setLoading(true);
-    setError(null);
-    try {
-      let data;
-      if (view === 'history') {
-        data = await fetchHistory(centerId);
-      } else if (role === 'director') {
-        data = await fetchDirectorQueue(centerId);
-      } else {
-        data = await fetchTeacherQueue(centerId);
-      }
-      setEvents(data);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [centerId, role, view]);
-
-  useEffect(() => {
-    loadEvents();
-    if (view === 'pending') {
-      const interval = setInterval(loadEvents, 15000);
-      return () => clearInterval(interval);
-    }
-  }, [loadEvents, view]);
-
-  // ─── Actions ───────────────────────────────────────────────
-  async function handleAction(action, eventId, editData) {
-    try {
-      if (action === 'approve') {
-        await approveEvent(centerId, eventId);
-        addToast('Event approved');
-      } else if (action === 'reject') {
-        await rejectEvent(centerId, eventId);
-        addToast('Event rejected', 'info');
-      } else if (action === 'edit') {
-        await editEvent(centerId, eventId, editData);
-        addToast('Event updated');
-      }
-      if (action === 'approve' || action === 'reject') {
-        setEvents((prev) => prev.filter((e) => e.id !== eventId));
-      } else {
-        await loadEvents();
-      }
-    } catch (err) {
-      addToast(err.message, 'error');
-    }
-  }
-
-  async function handleBatchApprove(childName) {
-    try {
-      const result = await batchApprove(centerId, childName);
-      addToast(result.message);
-      setEvents((prev) => prev.filter((e) => e.child_name !== childName));
-    } catch (err) {
-      addToast(err.message, 'error');
-    }
-  }
-
-  // ─── Grouping ──────────────────────────────────────────────
-  const grouped = events.reduce((acc, event) => {
-    const name = event.child_name || 'Unknown';
-    if (!acc[name]) acc[name] = [];
-    acc[name].push(event);
-    return acc;
-  }, {});
-
-  const isHistory = view === 'history';
   const nav = role === 'director' ? DIRECTOR_NAV : TEACHER_NAV;
-
   const headerTitle = role === 'director' ? 'Director Dashboard' : 'Teacher Console';
   const headerSubtitle = role === 'director' ? null : '— Room 2';
-
-  // Hero section copy per view/role
-  const heroHeadline = isHistory ? 'Review History' : role === 'director' ? 'Needs Attention' : 'Daily Digest';
-  const heroDesc = isHistory
-    ? 'Browse previously reviewed events and their outcomes.'
-    : role === 'director'
-    ? `${events.length} flagged event${events.length !== 1 ? 's' : ''} need your attention today.`
-    : `AI has curated ${events.length} ${events.length === 1 ? 'activity' : 'activities'} today. Review and publish to parent feeds with one tap.`;
 
   return (
     <div className="min-h-screen bg-surface">
@@ -155,9 +56,9 @@ function App({ forcedRole, centerId: propscenterId }) {
         <div className="flex items-center gap-3">
           {/* Role avatar / switcher */}
           <button
-            onClick={isRouted ? undefined : () => setRole(role === 'teacher' ? 'director' : 'teacher')}
-            title={isRouted ? role : `Switch to ${role === 'teacher' ? 'Director' : 'Teacher'} view`}
-            className={`w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-primary font-semibold text-sm border border-outline-variant/5 transition-all ${isRouted ? '' : 'hover:bg-surface-container-high active:scale-95 cursor-pointer'}`}
+            onClick={() => setRole(role === 'teacher' ? 'director' : 'teacher')}
+            title={`Switch to ${role === 'teacher' ? 'Director' : 'Teacher'} view`}
+            className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-primary font-semibold text-sm border border-outline-variant/5 hover:bg-surface-container-high transition-all active:scale-95"
           >
             {role === 'teacher' ? 'T' : 'D'}
           </button>
@@ -170,109 +71,15 @@ function App({ forcedRole, centerId: propscenterId }) {
             </h1>
           </div>
         </div>
-        <button
-          onClick={loadEvents}
-          disabled={loading}
-          className="text-primary hover:opacity-70 transition-opacity disabled:opacity-40"
-          title="Refresh"
-        >
-          <span className="material-symbols-outlined">sync_alt</span>
-        </button>
       </header>
 
       {/* ── Main Content ── */}
       <main className="pt-24 pb-32 px-6 max-w-4xl mx-auto">
-        {/* Error banner */}
-        {error && (
-          <div className="mb-6 flex items-center justify-between bg-error-container text-on-error-container px-4 py-3 rounded-lg">
-            <span className="text-sm">{error}</span>
-            <button onClick={() => setError(null)} className="ml-3 hover:opacity-70">
-              <span className="material-symbols-outlined text-base">close</span>
-            </button>
-          </div>
-        )}
-
-        {view === 'center' ? (
-          <CenterView centerId={centerId} addToast={addToast} />
-        ) : view === 'activity' ? (
-          <ActivityLog centerId={centerId} />
-        ) : loading && events.length === 0 ? (
-          /* Loading state */
-          <div className="flex flex-col items-center justify-center py-24 gap-4 text-on-surface-variant">
-            <div className="spinner" />
-            <p className="text-sm font-medium">Loading events…</p>
-          </div>
-        ) : (
-          <>
-            {/* Hero Section */}
-            <section className="mb-10">
-              <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-                <div>
-                  <h2 className="font-headline text-4xl md:text-5xl text-on-surface mb-2 tracking-tight">
-                    {heroHeadline}
-                  </h2>
-                  <p className="text-on-surface-variant max-w-md leading-relaxed">{heroDesc}</p>
-                </div>
-                {!isHistory && events.length > 0 && (
-                  <div className="flex gap-2 shrink-0">
-                    <span className="ai-chip">
-                      <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>
-                        auto_awesome
-                      </span>
-                      {events.length} Ready to Publish
-                    </span>
-                  </div>
-                )}
-              </div>
-            </section>
-
-            {/* Events */}
-            {events.length === 0 ? (
-              <EmptyState role={isHistory ? 'history' : role} />
-            ) : (
-              <div className="space-y-10">
-                {Object.entries(grouped).map(([childName, childEvents]) => (
-                  <section key={childName} className="space-y-4">
-                    {/* Child group header */}
-                    <div className="flex items-center gap-4 px-2">
-                      <div className="w-11 h-11 rounded-full bg-surface-container-highest flex items-center justify-center text-primary font-semibold text-base border border-outline-variant/15 shrink-0">
-                        {childName.charAt(0).toUpperCase()}
-                      </div>
-                      <h3 className="font-headline text-2xl text-on-surface">{childName}</h3>
-                      <span className="ml-1 text-xs font-medium text-on-surface-variant bg-surface-container px-2.5 py-1 rounded-full">
-                        {childEvents.length}
-                      </span>
-                      {!isHistory && childEvents.length > 1 && (
-                        <button
-                          onClick={() => handleBatchApprove(childName)}
-                          className="ml-auto ai-chip text-xs"
-                        >
-                          <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>
-                            done_all
-                          </span>
-                          Approve All
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Event cards */}
-                    <div className="space-y-4">
-                      {childEvents.map((event) => (
-                        <EventCard
-                          key={event.id}
-                          event={event}
-                          centerId={centerId}
-                          onAction={handleAction}
-                          readOnly={isHistory}
-                        />
-                      ))}
-                    </div>
-                  </section>
-                ))}
-              </div>
-            )}
-          </>
-        )}
+        {view === 'center' && role === 'director' && <CenterView centerId={centerId} addToast={addToast} />}
+        {view === 'activity' && role === 'director' && <ActivityLog centerId={centerId} />}
+        {view === 'history' && <HistoryView centerId={centerId} addToast={addToast} />}
+        {view === 'pending' && role === 'director' && <DirectorDashboard centerId={centerId} addToast={addToast} />}
+        {view === 'pending' && role === 'teacher' && <TeacherQueue centerId={centerId} addToast={addToast} />}
       </main>
 
       {/* ── Bottom Nav ── */}

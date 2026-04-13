@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { fetchActivityLog } from '../api';
-import EmptyState from './EmptyState';
+import { fetchActivityLog } from '../../api';
+import EmptyState from '../../components/ui/EmptyState';
 
 const ACTION_META = {
   APPROVE:       { icon: 'check_circle', chipClass: 'bg-secondary-fixed text-on-secondary-fixed-variant',  label: 'Approved' },
