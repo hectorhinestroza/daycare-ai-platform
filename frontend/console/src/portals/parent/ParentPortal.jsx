@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { fetchParentFeed, fetchChildPublic } from '../../api';
+import { fetchParentFeed, fetchChildPublic, fetchNarrative } from '../../api/index';
 
 const EVENT_ICON = {
   food: 'restaurant',
@@ -28,6 +28,16 @@ const EVENT_COLOR = {
   dropoff: 'bg-surface-container-high text-on-surface-variant',
   note: 'bg-surface-container-high text-on-surface-variant',
 };
+
+const TONE_CONFIG = {
+  upbeat: { icon: 'sentiment_very_satisfied', label: 'Great day!', class: 'bg-[#e8f5e9] text-[#2e7d32]' },
+  neutral: { icon: 'sentiment_neutral', label: 'Good day', class: 'bg-surface-container text-on-surface-variant' },
+  'needs-attention': { icon: 'info', label: 'Needs attention', class: 'bg-error-container text-on-error-container' },
+};
+
+function todayDateString() {
+  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+}
 
 function formatTime(dateStr) {
   if (!dateStr) return '';
@@ -64,17 +74,21 @@ function groupByDate(events) {
 export default function ParentPortal({ centerId, childId }) {
   const [child, setChild] = useState(null);
   const [events, setEvents] = useState([]);
+  const [narrative, setNarrative] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const loadData = useCallback(async () => {
     try {
-      const [childData, feedData] = await Promise.all([
+      const today = todayDateString();
+      const [childData, feedData, narrativeData] = await Promise.all([
         fetchChildPublic(centerId, childId),
         fetchParentFeed(centerId, childId),
+        fetchNarrative(centerId, childId, today),
       ]);
       setChild(childData);
       setEvents(feedData);
+      setNarrative(narrativeData); // null if 404 (not yet generated)
       setError(null);
     } catch (err) {
       setError(err.message);
@@ -132,15 +146,7 @@ export default function ParentPortal({ centerId, childId }) {
             <p className="text-sm font-medium">Loading updates...</p>
           </div>
         ) : events.length === 0 ? (
-          <div className="text-center py-24 text-on-surface-variant">
-            <span className="material-symbols-outlined text-5xl text-outline mb-4 block">
-              nest_cam_wired_stand
-            </span>
-            <h2 className="font-headline text-2xl text-on-surface mb-2">No updates yet</h2>
-            <p className="text-sm max-w-xs mx-auto">
-              Updates will appear here as your child's teacher records activities throughout the day.
-            </p>
-          </div>
+          <EmptyDay childName={child?.name} narrative={narrative} />
         ) : (
           <div className="space-y-8">
             {dayGroups.map((group, idx) => (
@@ -153,10 +159,15 @@ export default function ParentPortal({ centerId, childId }) {
                   </span>
                 </div>
 
-                {/* Daily summary for today */}
-                {idx === 0 && group.events.length >= 2 && (
+                {/* Today's summary — AI narrative takes priority over rule-based */}
+                {idx === 0 && narrative ? (
+                  <EODNarrativeCard narrative={narrative} />
+                ) : idx === 0 && group.events.length >= 2 ? (
                   <DailySummary events={group.events} childName={child?.name} />
-                )}
+                ) : null}
+
+                {/* Photo gallery for today if photos exist */}
+                {idx === 0 && <PhotoGallery events={group.events} narrative={narrative} />}
 
                 {/* Timeline */}
                 <div className="space-y-3">
@@ -173,6 +184,112 @@ export default function ParentPortal({ centerId, childId }) {
   );
 }
 
+// ─── Empty state ──────────────────────────────────────────────
+
+function EmptyDay({ childName, narrative }) {
+  const firstName = childName?.split(' ')[0] || 'Your child';
+
+  // If a narrative was generated despite no live-feed events (e.g. absence),
+  // show it instead of the generic empty state.
+  if (narrative) {
+    return (
+      <div className="py-12">
+        <EODNarrativeCard narrative={narrative} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="text-center py-24 text-on-surface-variant">
+      <span className="material-symbols-outlined text-5xl text-outline mb-4 block">
+        nest_cam_wired_stand
+      </span>
+      <h2 className="font-headline text-2xl text-on-surface mb-2">No updates yet</h2>
+      <p className="text-sm max-w-xs mx-auto">
+        Updates for {firstName} will appear here as the teacher records activities throughout the day.
+      </p>
+    </div>
+  );
+}
+
+// ─── EOD Narrative card (AI-generated) ───────────────────────
+
+function EODNarrativeCard({ narrative }) {
+  const tone = TONE_CONFIG[narrative.tone] || TONE_CONFIG.neutral;
+
+  return (
+    <div className="glass-panel rounded-xl p-5 mb-5 border border-outline-variant/20">
+      {/* Tone chip + label */}
+      <div className="flex items-center gap-2 mb-3">
+        <span
+          className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${tone.class}`}
+        >
+          <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>
+            {tone.icon}
+          </span>
+          {tone.label}
+        </span>
+        <span className="text-xs text-on-surface-variant ml-auto">End-of-Day Summary</span>
+      </div>
+
+      {/* Headline */}
+      <h3 className="font-headline text-lg font-semibold text-on-surface mb-2 leading-snug">
+        {narrative.headline}
+      </h3>
+
+      {/* Body */}
+      <p className="text-sm text-on-surface-variant leading-relaxed">
+        {narrative.body}
+      </p>
+    </div>
+  );
+}
+
+// ─── Photo gallery ─────────────────────────────────────────
+
+function PhotoGallery({ events, narrative }) {
+  const photoCaptions = narrative?.photo_captions || {};
+
+  // Collect photos with captions from narrative, or any event photos
+  const photos = [];
+  for (const event of events) {
+    if (!event.photos) continue;
+    for (const photo of event.photos) {
+      if (photo.s3_url || photo.s3_key) {
+        photos.push({
+          id: photo.id,
+          url: photo.s3_url,
+          caption: photoCaptions[photo.id] || photo.caption || null,
+        });
+      }
+    }
+  }
+
+  if (photos.length === 0) return null;
+
+  return (
+    <div className="mb-5">
+      <p className="text-xs font-medium text-on-surface-variant uppercase tracking-wider mb-2">Photos</p>
+      <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
+        {photos.map((photo) => (
+          <div key={photo.id} className="shrink-0 w-40">
+            <div className="w-40 h-40 rounded-lg overflow-hidden bg-surface-container">
+              <img src={photo.url} alt={photo.caption || 'Photo'} className="w-full h-full object-cover" />
+            </div>
+            {photo.caption && (
+              <p className="text-xs text-on-surface-variant mt-1.5 leading-snug line-clamp-2">
+                {photo.caption}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Event card ───────────────────────────────────────────────
+
 function ParentEventCard({ event }) {
   const icon = EVENT_ICON[event.event_type] || 'circle';
   const colorClass = EVENT_COLOR[event.event_type] || EVENT_COLOR.note;
@@ -180,14 +297,11 @@ function ParentEventCard({ event }) {
 
   return (
     <div className="japandi-card rounded-lg shadow-ambient p-4 flex gap-4 items-start card-appear">
-      {/* Icon */}
       <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${colorClass}`}>
         <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>
           {icon}
         </span>
       </div>
-
-      {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
           <span className="text-xs font-medium uppercase tracking-wider text-on-surface-variant">
@@ -207,6 +321,8 @@ function ParentEventCard({ event }) {
     </div>
   );
 }
+
+// ─── Rule-based fallback (shown when no AI narrative yet) ─────
 
 function DailySummary({ events, childName }) {
   const typeCounts = {};

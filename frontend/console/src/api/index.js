@@ -69,6 +69,24 @@ export async function fetchActivityLog(centerId, { action, eventId, limit = 50, 
   return res.json();
 }
 
+// ─── Narratives ─────────────────────────────────────────────
+
+export async function fetchNarrative(centerId, childId, targetDate) {
+  const res = await fetch(`${API_BASE}/api/narratives/${centerId}/${childId}/${targetDate}`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Failed to fetch narrative: ${res.status}`);
+  return res.json();
+}
+
+export async function generateNarrative(centerId, childId, targetDate) {
+  const params = targetDate ? `?target_date=${targetDate}` : '';
+  const res = await fetch(`${API_BASE}/api/narratives/${centerId}/${childId}/generate${params}`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error(`Failed to generate narrative: ${res.status}`);
+  return res.json();
+}
+
 // ─── Parent Feed ────────────────────────────────────────────
 
 export async function fetchParentFeed(centerId, childId, { limit = 50, offset = 0 } = {}) {
