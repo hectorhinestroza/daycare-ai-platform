@@ -19,6 +19,7 @@ from sqlalchemy import (
     Index,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -238,3 +239,35 @@ class ActivityLog(Base):
     center = relationship("Center")
     event = relationship("Event")
     child = relationship("Child")
+
+
+# ─── Daily Narratives ─────────────────────────────────────────
+
+
+class DailyNarrative(Base):
+    """AI-generated EOD summary for a child on a given date.
+
+    One row per (center_id, child_id, date) — upserted on regeneration.
+    photo_captions stored as JSON text: { photo_id: caption }.
+    """
+
+    __tablename__ = "daily_narratives"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    center_id = Column(UUID(as_uuid=True), ForeignKey("centers.id"), nullable=False)
+    child_id = Column(UUID(as_uuid=True), ForeignKey("children.id"), nullable=False)
+    date = Column(Date, nullable=False)
+    headline = Column(String(500), nullable=False)
+    body = Column(Text, nullable=False)
+    tone = Column(String(20), nullable=False, default="neutral")  # upbeat | neutral | needs-attention
+    photo_captions = Column(Text, nullable=True)  # JSON: { photo_id → caption }
+    published_at = Column(DateTime, nullable=True)
+    admin_override = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    center = relationship("Center")
+    child = relationship("Child")
+
+    __table_args__ = (
+        UniqueConstraint("center_id", "child_id", "date", name="uq_narrative_center_child_date"),
+    )
