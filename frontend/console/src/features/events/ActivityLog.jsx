@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { fetchActivityLog } from '../../api';
 import EmptyState from '../../components/ui/EmptyState';
+import { fromApi } from '../../utils/time';
 
 const ACTION_META = {
   APPROVE:       { icon: 'check_circle', chipClass: 'bg-secondary-fixed text-on-secondary-fixed-variant',  label: 'Approved' },
@@ -114,7 +115,7 @@ export default function ActivityLog({ centerId }) {
                         {meta.label}
                       </span>
                       <span className="text-xs text-on-surface-variant">
-                        {new Date(log.created_at).toLocaleString([], {
+                        {fromApi(log.created_at).toLocaleString([], {
                           month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
                         })}
                       </span>

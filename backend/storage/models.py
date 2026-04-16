@@ -7,7 +7,7 @@ Tables: centers, admins, teachers, rooms, children, events, photos
 """
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from sqlalchemy import (
     Boolean,
@@ -36,7 +36,7 @@ class Center(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(255), nullable=False)
     timezone = Column(String(50), default="America/New_York")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     admins = relationship("Admin", back_populates="center")
@@ -61,7 +61,7 @@ class Admin(Base):
     phone = Column(String(20), nullable=True)
     role = Column(String(20), nullable=False, default="director")  # director | admin
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     center = relationship("Center", back_populates="admins")
 
@@ -78,7 +78,7 @@ class Teacher(Base):
     phone = Column(String(30), nullable=False, unique=True)  # WhatsApp number (E.164)
     room_id = Column(UUID(as_uuid=True), ForeignKey("rooms.id"), nullable=True)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     center = relationship("Center", back_populates="teachers")
     room = relationship("Room", back_populates="teachers")
@@ -94,7 +94,7 @@ class Room(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     center_id = Column(UUID(as_uuid=True), ForeignKey("centers.id"), nullable=False)
     name = Column(String(100), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     center = relationship("Center", back_populates="rooms")
     teachers = relationship("Teacher", back_populates="room")
@@ -116,7 +116,7 @@ class Child(Base):
     allergies = Column(Text, nullable=True)
     medical_notes = Column(Text, nullable=True)
     enrollment_date = Column(Date, default=date.today)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     center = relationship("Center", back_populates="children")
     room = relationship("Room", back_populates="children")
@@ -146,7 +146,7 @@ class ParentContact(Base):
     relationship_type = Column(String(50), nullable=False, default="parent")  # parent | guardian | emergency
     can_pickup = Column(Boolean, default=True)
     is_primary = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     child = relationship("Child", back_populates="parent_contacts")
     center = relationship("Center")
@@ -172,7 +172,7 @@ class Event(Base):
     # Event data
     child_name = Column(String(255), nullable=False)  # from transcript, before child_id resolution
     event_type = Column(String(50), nullable=False)  # food, nap, potty, etc.
-    event_time = Column(DateTime, nullable=True)
+    event_time = Column(DateTime(timezone=True), nullable=True)
     details = Column(Text, nullable=True)
     raw_transcript = Column(Text, nullable=False)
 
@@ -185,9 +185,9 @@ class Event(Base):
     # Status
     status = Column(String(20), nullable=False, default="PENDING")  # PENDING | APPROVED | REJECTED
     reviewed_by = Column(UUID(as_uuid=True), nullable=True)  # admin or teacher who approved
-    reviewed_at = Column(DateTime, nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     center = relationship("Center", back_populates="events")
@@ -210,7 +210,7 @@ class Photo(Base):
     s3_key = Column(String(500), nullable=True)  # populated when S3 is set up
     caption = Column(Text, nullable=True)
     content_type = Column(String(50), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     event = relationship("Event", back_populates="photos")
 
@@ -234,7 +234,7 @@ class ActivityLog(Base):
     actor_type = Column(String(20), nullable=False, default="system")  # teacher | director | system
     action = Column(String(30), nullable=False)  # APPROVE | REJECT | EDIT | BATCH_APPROVE | CREATE
     details = Column(Text, nullable=True)  # JSON — what changed
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     center = relationship("Center")
     event = relationship("Event")
@@ -261,9 +261,9 @@ class DailyNarrative(Base):
     body = Column(Text, nullable=False)
     tone = Column(String(20), nullable=False, default="neutral")  # upbeat | neutral | needs-attention
     photo_captions = Column(Text, nullable=True)  # JSON: { photo_id → caption }
-    published_at = Column(DateTime, nullable=True)
+    published_at = Column(DateTime(timezone=True), nullable=True)
     admin_override = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     center = relationship("Center")
     child = relationship("Child")

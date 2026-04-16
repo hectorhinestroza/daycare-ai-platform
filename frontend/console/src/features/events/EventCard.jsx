@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { fromApi } from '../../utils/time';
 
 const EVENT_META = {
   food:         { icon: 'restaurant',       accentClass: 'bg-tertiary-container' },
@@ -29,7 +30,7 @@ export default function EventCard({ event, onAction, readOnly = false }) {
   const isLowConfidence = event.confidence_score < 0.7;
 
   const time = event.event_time
-    ? new Date(event.event_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    ? fromApi(event.event_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : null;
 
   async function doAction(action) {
@@ -127,7 +128,7 @@ export default function EventCard({ event, onAction, readOnly = false }) {
             </span>
             {event.reviewed_at && (
               <span className="text-xs text-on-surface-variant">
-                {new Date(event.reviewed_at).toLocaleString([], {
+                {fromApi(event.reviewed_at).toLocaleString([], {
                   month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
                 })}
               </span>

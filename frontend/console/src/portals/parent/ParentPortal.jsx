@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchParentFeed, fetchChildPublic, fetchNarrative, generateNarrative } from '../../api/index';
+import { fromApi } from '../../utils/time';
 
 const EVENT_ICON = {
   food: 'restaurant',
@@ -47,14 +48,14 @@ function isPastCutoff() {
 }
 
 function formatTime(dateStr) {
-  if (!dateStr) return '';
-  const d = new Date(dateStr);
+  const d = fromApi(dateStr);
+  if (!d) return '';
   return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
 function formatDate(dateStr) {
-  if (!dateStr) return '';
-  const d = new Date(dateStr);
+  const d = fromApi(dateStr);
+  if (!d) return '';
   const today = new Date();
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
@@ -67,7 +68,8 @@ function formatDate(dateStr) {
 function groupByDate(events) {
   const groups = {};
   for (const event of events) {
-    const dateKey = new Date(event.event_time || event.created_at).toDateString();
+    const d = fromApi(event.event_time || event.created_at);
+    const dateKey = d.toDateString();
     if (!groups[dateKey]) groups[dateKey] = [];
     groups[dateKey].push(event);
   }
