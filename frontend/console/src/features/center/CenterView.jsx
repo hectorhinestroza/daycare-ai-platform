@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { fetchRooms, fetchTeachers } from '../../api';
+import { fetchRooms, fetchTeachers, generateAllNarratives } from '../../api';
 import ChildrenPanel from './ChildrenPanel';
 import RoomsPanel from './RoomsPanel';
 import TeachersPanel from './TeachersPanel';
@@ -15,6 +15,22 @@ export default function CenterView({ centerId, addToast }) {
   const [rooms, setRooms] = useState([]);
   const [teachers, setTeachers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [generatingEOD, setGeneratingEOD] = useState(false);
+
+  async function handleGenerateEOD() {
+    setGeneratingEOD(true);
+    try {
+      const result = await generateAllNarratives(centerId);
+      addToast(
+        `EOD reports: ${result.generated} generated, ${result.failed} failed, ${result.skipped} skipped`,
+        result.failed > 0 ? 'error' : 'success',
+      );
+    } catch (err) {
+      addToast(err.message, 'error');
+    } finally {
+      setGeneratingEOD(false);
+    }
+  }
 
   const loadSharedData = useCallback(async () => {
     if (!centerId) return;
@@ -38,13 +54,29 @@ export default function CenterView({ centerId, addToast }) {
   return (
     <>
       {/* Hero */}
-      <section className="mb-8">
-        <h2 className="font-headline text-4xl md:text-5xl text-on-surface mb-2 tracking-tight">
-          Manage Center
-        </h2>
-        <p className="text-on-surface-variant max-w-md leading-relaxed">
-          Classrooms, children, and parent contacts for your center.
-        </p>
+      <section className="mb-8 flex items-start justify-between gap-4">
+        <div>
+          <h2 className="font-headline text-4xl md:text-5xl text-on-surface mb-2 tracking-tight">
+            Manage Center
+          </h2>
+          <p className="text-on-surface-variant max-w-md leading-relaxed">
+            Classrooms, children, and parent contacts for your center.
+          </p>
+        </div>
+        <button
+          onClick={handleGenerateEOD}
+          disabled={generatingEOD}
+          className="btn-secondary flex items-center gap-2 shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
+          title="Generate end-of-day summaries for all active children"
+        >
+          <span
+            className={`material-symbols-outlined text-base ${generatingEOD ? 'animate-spin' : ''}`}
+            style={{ fontVariationSettings: "'FILL' 1" }}
+          >
+            {generatingEOD ? 'progress_activity' : 'auto_awesome'}
+          </span>
+          {generatingEOD ? 'Generating…' : 'EOD Reports'}
+        </button>
       </section>
 
       {/* Sub-nav tabs */}

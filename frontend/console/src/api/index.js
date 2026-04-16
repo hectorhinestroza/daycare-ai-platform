@@ -87,6 +87,15 @@ export async function generateNarrative(centerId, childId, targetDate) {
   return res.json();
 }
 
+export async function generateAllNarratives(centerId, targetDate) {
+  const params = targetDate ? `?target_date=${targetDate}` : '';
+  const res = await fetch(`${API_BASE}/api/narratives/${centerId}/generate-all${params}`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error(`Failed to generate narratives: ${res.status}`);
+  return res.json();
+}
+
 // ─── Parent Feed ────────────────────────────────────────────
 
 export async function fetchParentFeed(centerId, childId, { limit = 50, offset = 0 } = {}) {

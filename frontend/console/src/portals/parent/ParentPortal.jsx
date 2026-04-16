@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { fetchParentFeed, fetchChildPublic, fetchNarrative } from '../../api/index';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { fetchParentFeed, fetchChildPublic, fetchNarrative, generateNarrative } from '../../api/index';
 
 const EVENT_ICON = {
   food: 'restaurant',
@@ -39,6 +39,13 @@ function todayDateString() {
   return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 }
 
+// Narrative is only worth generating after enough of the day has passed
+const NARRATIVE_CUTOFF_HOUR = 15; // 3 PM local time
+
+function isPastCutoff() {
+  return new Date().getHours() >= NARRATIVE_CUTOFF_HOUR;
+}
+
 function formatTime(dateStr) {
   if (!dateStr) return '';
   const d = new Date(dateStr);
@@ -75,8 +82,12 @@ export default function ParentPortal({ centerId, childId }) {
   const [child, setChild] = useState(null);
   const [events, setEvents] = useState([]);
   const [narrative, setNarrative] = useState(null);
+  const [generating, setGenerating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Guard: only attempt generation once per session to avoid retrying on every poll
+  const generationAttempted = useRef(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -88,8 +99,22 @@ export default function ParentPortal({ centerId, childId }) {
       ]);
       setChild(childData);
       setEvents(feedData);
-      setNarrative(narrativeData); // null if 404 (not yet generated)
+      setNarrative(narrativeData);
       setError(null);
+
+      // Lazy generation: trigger once if past cutoff and no narrative exists yet
+      if (!narrativeData && !generationAttempted.current && isPastCutoff() && feedData.length > 0) {
+        generationAttempted.current = true;
+        setGenerating(true);
+        try {
+          const generated = await generateNarrative(centerId, childId, today);
+          setNarrative(generated);
+        } catch {
+          // Silent fail — parent still sees the rule-based summary
+        } finally {
+          setGenerating(false);
+        }
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -160,7 +185,9 @@ export default function ParentPortal({ centerId, childId }) {
                 </div>
 
                 {/* Today's summary — AI narrative takes priority over rule-based */}
-                {idx === 0 && narrative ? (
+                {idx === 0 && generating ? (
+                  <NarrativeGenerating />
+                ) : idx === 0 && narrative ? (
                   <EODNarrativeCard narrative={narrative} />
                 ) : idx === 0 && group.events.length >= 2 ? (
                   <DailySummary events={group.events} childName={child?.name} />
@@ -208,6 +235,24 @@ function EmptyDay({ childName, narrative }) {
       <p className="text-sm max-w-xs mx-auto">
         Updates for {firstName} will appear here as the teacher records activities throughout the day.
       </p>
+    </div>
+  );
+}
+
+// ─── Narrative generating skeleton ───────────────────────────
+
+function NarrativeGenerating() {
+  return (
+    <div className="glass-panel rounded-xl p-5 mb-5 border border-outline-variant/20 animate-pulse">
+      <div className="flex items-center gap-2 mb-3">
+        <span className="material-symbols-outlined text-primary text-sm animate-spin">
+          progress_activity
+        </span>
+        <span className="text-xs text-on-surface-variant">Composing today's summary…</span>
+      </div>
+      <div className="h-4 bg-surface-container rounded w-3/4 mb-2" />
+      <div className="h-3 bg-surface-container rounded w-full mb-1.5" />
+      <div className="h-3 bg-surface-container rounded w-5/6" />
     </div>
   );
 }
