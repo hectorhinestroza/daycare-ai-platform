@@ -120,9 +120,10 @@ Repo: https://github.com/hectorhinestroza/daycare-ai-platform
 ### Weeks 5–6: Parent Portal + AI Narrative
 | # | Title | Label | Status |
 |---|-------|-------|--------|
-| 10 | AI Narrative Daily Report Generation | week-5 | 🔲 Open |
-| 11 | Parent Portal: Daily Report View + On demand view(every time teacher sends update it notifies the parent and parent can view the update in real time) + Photo Gallery +  | week-5 | 🔲 Open |
+| 10 | AI Narrative Daily Report Generation | week-5 | ✅ Done |
+| 11 | Parent Portal: Daily Report View + On demand view(every time teacher sends update it notifies the parent and parent can view the update in real time) + Photo Gallery +  | week-5 | ✅ Done |
 | 12 | WhatsApp Push Notification + Parent Heart Reaction | week-6 | 🔲 Open |
+| 19 | Replace 10s polling with real-time push (Supabase subscriptions or WebSockets) | tech-debt, week-7 | 🔲 Open |
 
 ### Weeks 7–8: Billing Module + CSV Migration
 | # | Title | Label | Status |
