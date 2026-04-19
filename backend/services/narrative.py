@@ -15,7 +15,7 @@ import uuid
 from datetime import date as date_type
 from typing import List, Optional
 
-from openai import OpenAI
+from openai import AsyncOpenAI
 from sqlalchemy import cast, Date, func, or_
 from sqlalchemy.orm import Session
 
@@ -145,7 +145,7 @@ async def generate_narrative(
 
     # ── 4. Call GPT-4o ────────────────────────────────────────
     settings = get_settings()
-    client = OpenAI(api_key=settings.openai_api_key)
+    client = AsyncOpenAI(api_key=settings.openai_api_key)
 
     events_block = _build_events_block(events)
     user_prompt = (
@@ -160,7 +160,7 @@ async def generate_narrative(
     )
 
     try:
-        response = client.chat.completions.create(
+        response = await client.chat.completions.create(
             model="gpt-4o",
             temperature=0,
             response_format={"type": "json_object"},
