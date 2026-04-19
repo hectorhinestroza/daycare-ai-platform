@@ -178,7 +178,7 @@ def list_event_history(
 
 
 @router.post("/{center_id}/batch-approve", response_model=BatchApproveResponse)
-async def batch_approve_endpoint(
+def batch_approve_endpoint(
     center_id: UUID,
     body: BatchApproveRequest,
     background_tasks: BackgroundTasks,
@@ -226,7 +226,7 @@ def get_event_detail(center_id: UUID, event_id: UUID, db: Session = Depends(get_
 
 
 @router.post("/{center_id}/{event_id}/approve", response_model=ActionResponse)
-async def approve_event_endpoint(
+def approve_event_endpoint(
     center_id: UUID,
     event_id: UUID,
     background_tasks: BackgroundTasks,
