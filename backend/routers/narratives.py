@@ -134,12 +134,13 @@ async def generate_narrative_endpoint(
 async def generate_all_narratives(
     center_id: UUID,
     target_date: Optional[date_type] = Query(default=None, description="Date to generate for (defaults to today UTC)"),
+    force: bool = Query(default=False, description="Regenerate even if a narrative already exists for this date"),
     db: Session = Depends(get_db),
 ):
     """Generate EOD narratives for all active children in a center.
 
-    Intended for cron use (e.g. call daily at 6 PM center time).
-    Returns a summary of successes and failures.
+    By default skips children who already have a narrative for the target date.
+    Pass force=true to regenerate everyone (e.g. to pick up late-day events).
     """
     if target_date is None:
         target_date = datetime.now(timezone.utc).date()
@@ -157,11 +158,18 @@ async def generate_all_narratives(
     generated = failed = skipped = 0
 
     for child in children:
-        # Skip if admin has manually overridden this narrative
         existing = get_narrative(db, center_id, child.id, target_date)
+
+        # Always skip admin-overridden narratives
         if existing and existing.admin_override:
             skipped += 1
             results.append({"child_id": str(child.id), "name": child.name, "status": "skipped (admin override)"})
+            continue
+
+        # Skip if narrative already exists and force=False
+        if existing and not force:
+            skipped += 1
+            results.append({"child_id": str(child.id), "name": child.name, "status": "skipped (already generated)"})
             continue
 
         try:

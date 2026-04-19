@@ -40,13 +40,6 @@ function todayDateString() {
   return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 }
 
-// Narrative is only worth generating after enough of the day has passed
-const NARRATIVE_CUTOFF_HOUR = 15; // 3 PM local time
-
-function isPastCutoff() {
-  return new Date().getHours() >= NARRATIVE_CUTOFF_HOUR;
-}
-
 function formatTime(dateStr) {
   const d = fromApi(dateStr);
   if (!d) return '';
@@ -88,8 +81,22 @@ export default function ParentPortal({ centerId, childId }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Guard: only attempt generation once per session to avoid retrying on every poll
-  const generationAttempted = useRef(false);
+  // Guard: auto-trigger fires only once per session; manual retries always allowed
+  const autoTriggered = useRef(false);
+
+  const handleGenerate = useCallback(async () => {
+    const today = todayDateString();
+    setGenerating(true);
+    try {
+      const generated = await generateNarrative(centerId, childId, today);
+      setNarrative(generated);
+    } catch (err) {
+      // Silent fail — parent sees the rule-based Daily Snapshot as fallback
+      console.warn('Narrative generation failed:', err.message);
+    } finally {
+      setGenerating(false);
+    }
+  }, [centerId, childId]);
 
   const loadData = useCallback(async () => {
     try {
@@ -104,25 +111,17 @@ export default function ParentPortal({ centerId, childId }) {
       setNarrative(narrativeData);
       setError(null);
 
-      // Lazy generation: trigger once if past cutoff and no narrative exists yet
-      if (!narrativeData && !generationAttempted.current && isPastCutoff() && feedData.length > 0) {
-        generationAttempted.current = true;
-        setGenerating(true);
-        try {
-          const generated = await generateNarrative(centerId, childId, today);
-          setNarrative(generated);
-        } catch {
-          // Silent fail — parent still sees the rule-based summary
-        } finally {
-          setGenerating(false);
-        }
+      // Auto-trigger once per session when events exist but no narrative yet
+      if (!narrativeData && !autoTriggered.current && feedData.length > 0) {
+        autoTriggered.current = true;
+        handleGenerate();
       }
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [centerId, childId]);
+  }, [centerId, childId, handleGenerate]);
 
   useEffect(() => {
     loadData();

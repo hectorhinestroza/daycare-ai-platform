@@ -21,10 +21,11 @@ export default function CenterView({ centerId, addToast }) {
     setGeneratingEOD(true);
     try {
       const result = await generateAllNarratives(centerId);
-      addToast(
-        `EOD reports: ${result.generated} generated, ${result.failed} failed, ${result.skipped} skipped`,
-        result.failed > 0 ? 'error' : 'success',
-      );
+      const parts = [];
+      if (result.generated > 0) parts.push(`${result.generated} generated`);
+      if (result.skipped > 0) parts.push(`${result.skipped} already done`);
+      if (result.failed > 0) parts.push(`${result.failed} failed`);
+      addToast(`EOD reports: ${parts.join(', ')}`, result.failed > 0 ? 'error' : 'success');
     } catch (err) {
       addToast(err.message, 'error');
     } finally {
