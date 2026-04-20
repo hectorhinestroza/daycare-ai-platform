@@ -148,7 +148,37 @@ export default function ChildProfile({ child, rooms, centerId, addToast, onUpdat
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
               <Field label="Date of Birth" value={detail.dob || '—'} />
-              <Field label="Room" value={rooms.find((r) => r.id === detail.room_id)?.name || 'Unassigned'} />
+              <div>
+                <span className="text-xs text-on-surface-variant">Room</span>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <p className="text-on-surface font-medium">
+                    {rooms.find((r) => r.id === detail.room_id)?.name || 'Unassigned'}
+                  </p>
+                  {detail.room_id && (
+                    <button 
+                      onClick={async () => {
+                        if (!confirm(`Remove ${detail.name} from this room?`)) return;
+                        setSaving(true);
+                        try {
+                          await updateChild(centerId, child.id, { room_id: null });
+                          addToast('Removed from room');
+                          await loadDetail();
+                          onUpdate();
+                        } catch (err) {
+                          addToast(err.message, 'error');
+                        } finally {
+                          setSaving(false);
+                        }
+                      }}
+                      disabled={saving}
+                      className="text-[10px] uppercase font-bold tracking-wider text-error opacity-70 hover:opacity-100 transition-opacity bg-error/10 px-2 py-0.5 rounded"
+                      title="Remove from room"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+              </div>
               <Field label="Status" value={detail.status} />
               <Field label="Enrolled" value={detail.enrollment_date || '—'} />
               <Field label="Allergies" value={detail.allergies || 'None'} full />
