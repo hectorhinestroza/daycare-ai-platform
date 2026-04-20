@@ -1,4 +1,4 @@
-"""Tests for L-1: Parental Consent Schema + Database View.
+"""Tests forParental Consent Schema + Database View.
 
 Verifies:
 - parental_consent table has all required columns

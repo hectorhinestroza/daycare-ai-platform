@@ -74,7 +74,7 @@ async def extract_events(
     Args:
         transcript:     Raw transcript text from Whisper
         center_id:      Center ID for multi-tenant isolation
-        db:             SQLAlchemy session — used for OpenAI audit log (L-5)
+        db:             SQLAlchemy session — used for OpenAI audit log
         child_name:     Optional pre-set child context from /child command
         known_children: Optional list of actual registered child names for resolution
         child_id:       Optional resolved child UUID for the audit log

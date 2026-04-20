@@ -1,4 +1,4 @@
-"""Tests for L-4: Photo EXIF Stripping + Secure S3 Storage.
+"""Tests forPhoto EXIF Stripping + Secure S3 Storage.
 
 Verifies:
 - GPS EXIF data is completely stripped from photos

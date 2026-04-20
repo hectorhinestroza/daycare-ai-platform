@@ -1,4 +1,4 @@
-"""Photo EXIF Stripping + Secure S3 Storage — Legal Compliance L-4.
+"""Photo EXIF Stripping + Secure S3 Storage — Legal Compliance 4.
 
 Every photo entering the system MUST pass through process_incoming_photo()
 before any bytes are written to storage.
@@ -11,7 +11,7 @@ Rules (legal_prd_v1.md §9):
 - Max file size: 10MB
 - S3 key format: photos/{center_id}/{child_id}/{date}/{uuid}.jpg — no PII
 
-Legal reference: legal_prd_v1.md §9.1–9.3 + legal_agent_prompt.md Issue L-4
+Legal reference: legal_prd_v1.md §9.1–9.3 + legal_agent_prompt.md the Legal PRD issue 4
 """
 
 import io

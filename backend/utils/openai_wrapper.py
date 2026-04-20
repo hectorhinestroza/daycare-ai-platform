@@ -1,4 +1,4 @@
-"""OpenAI call wrapper — Legal Compliance L-5.
+"""OpenAI call wrapper — Legal Compliance 5.
 
 Every OpenAI API call in the pipeline MUST go through call_openai_with_logging().
 

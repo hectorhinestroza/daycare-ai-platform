@@ -149,7 +149,7 @@ async def whatsapp_webhook(
             ext = "ogg" if "ogg" in content_type else "mp4"
             transcript = await transcribe_audio(audio_bytes, f"voice_memo.{ext}")
 
-            # L-3: Zero retention for audio — immediately delete from Twilio and clear memory
+            #Zero retention for audio — immediately delete from Twilio and clear memory
             import gc
             from backend.utils.media import delete_twilio_media
             import asyncio

@@ -1,12 +1,12 @@
-"""Parental Consent Pydantic schemas — Legal Compliance L-1.
+"""Parental Consent Pydantic schemas — Legal Compliance 1.
 
-Source of truth: legal_prd_v1.md §5.2 and legal_agent_prompt.md Issue L-1.
+Source of truth: legal_prd_v1.md §5.2 and legal_agent_prompt.md the Legal PRD issue 1.
 
 IMMUTABILITY RULE: parental_consent records are NEVER updated.
 Consent changes (withdrawal, version upgrade) are modeled as new inserts.
 There is NO ConsentUpdate schema by design.
 
-Consent collection triggers (L-8):
+Consent collection triggers:
     Director adds child → child status = PENDING_CONSENT
     → system emails magic link to parent
     → parent completes this consent form
@@ -84,6 +84,6 @@ class ConsentWithdraw(BaseModel):
 
     Withdrawal does NOT delete the consent record — it inserts a new record
     with is_active=False and sets withdrawn_at on the existing record.
-    All child data is deleted within 72 hours per COPPA (L-6).
+    All child data is deleted within 72 hours per COPPA.
     """
     reason: Optional[str] = None

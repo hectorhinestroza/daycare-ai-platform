@@ -24,7 +24,7 @@ AI-native childcare operations platform. Voice memos from teachers
 - COPPA compliance is a hard gate — see `docs/legal_PRD.md`
 
 ## Current Phase
-Week 4 of 10-week build plan. Issues #1–#11 complete. Legal Engineering Sprint 1 complete (L-1, L-2, L-4, L-5, L-9). Next: L-3 (WhatsApp audio privacy) + L-8 (Parental consent onboarding flow).
+Week 4 of 10-week build plan. Issues #1–#11 complete. Legal Engineering Sprint 1 complete (,,,,). Next:(WhatsApp audio privacy) +(Parental consent onboarding flow).
 
 ## Three-Tier Review System
 
@@ -107,22 +107,22 @@ Repo: https://github.com/hectorhinestroza/daycare-ai-platform
 ### Weeks 3–4: Legal Engineering (parallel track)
 | # | Title | Label | Status |
 |---|-------|-------|--------|
-| L-1 | Parental Consent Schema + DB Models | legal, week-4 | ✅ Done |
-| L-2 | Consent Gate Middleware | legal, week-4 | ✅ Done |
-| L-3 | WhatsApp Audio Privacy (in-memory, Twilio deletion) | legal, week-4 | 🔲 Open |
-| L-4 | Photo EXIF Stripping + Secure S3 Key Format | legal, week-4 | ✅ Done |
-| L-5 | AI API Privacy Controls (wrapper + ai_api_logs) | legal, week-2 | ✅ Done |
-| L-6 | Data Retention Enforcement Jobs (90-day nightly) | legal, week-8 | 🔲 Open |
-| L-7 | Parent Consent + Onboarding Flow (magic link) | legal, week-4 | 🔲 Open |
-| L-8 | Privacy Policy + Terms Pages | legal, week-9 | 🔲 Open |
-| L-9 | DPA Startup Guard + /health legal_checks field | legal, week-4 | ✅ Done |
+|| Parental Consent Schema + DB Models | legal, week-4 | ✅ Done |
+|| Consent Gate Middleware | legal, week-4 | ✅ Done |
+|| WhatsApp Audio Privacy (in-memory, Twilio deletion) | legal, week-4 | 🔲 Open |
+|| Photo EXIF Stripping + Secure S3 Key Format | legal, week-4 | ✅ Done |
+|| AI API Privacy Controls (wrapper + ai_api_logs) | legal, week-2 | ✅ Done |
+|| Data Retention Enforcement Jobs (90-day nightly) | legal, week-8 | 🔲 Open |
+|| Parent Consent + Onboarding Flow (magic link) | legal, week-4 | 🔲 Open |
+|| Privacy Policy + Terms Pages | legal, week-9 | 🔲 Open |
+|| DPA Startup Guard + /health legal_checks field | legal, week-4 | ✅ Done |
 
 ## Legal Engineering Decisions (Sprint 1)
 - **sanitize_prompt**: Dropped entirely. Full transcript needed for child name dedup. OpenAI DPA + `OPENAI_ZERO_RETENTION_CONFIRMED` is the legal gate.
 - **WhatsApp pilot**: Twilio Sandbox for first 2 pilot clients. No Meta Business Account registration required yet.
 - **Photos table**: Repurposed existing table — added `child_id` + `deleted_at` via migration.
 - **Consent gate in dev**: Logs WARNING, does not block. Gate enforced in production + staging.
-- **Consent trigger (L-7)**: Director adds child → status = PENDING_CONSENT → magic link emailed → parent fills 4-checkbox form → child = ACTIVE.
+- **Consent trigger**: Director adds child → status = PENDING_CONSENT → magic link emailed → parent fills 4-checkbox form → child = ACTIVE.
 - **child-voice instruction**: Appended to extraction SYSTEM_PROMPT per legal_prd v1 §4.3.
 
 ### Weeks 5–6: Parent Portal + AI Narrative

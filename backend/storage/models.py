@@ -200,11 +200,11 @@ class Event(Base):
 
 
 class Photo(Base):
-    """Photo references — legal-compliant shape (L-4).
+    """Photo references — legal-compliant shape.
 
     Actual image bytes stored in S3 (EXIF-stripped before upload).
     S3 key format: photos/{center_id}/{child_id}/{date}/{uuid}.jpg — no PII.
-    Photos older than 90 days are deleted nightly (L-7 retention job).
+    Photos older than 90 days are deleted nightly.
     All delivery via pre-signed URLs with 1-hour expiry maximum.
     """
 
@@ -212,13 +212,13 @@ class Photo(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     center_id = Column(UUID(as_uuid=True), ForeignKey("centers.id"), nullable=False)
-    child_id = Column(UUID(as_uuid=True), ForeignKey("children.id"), nullable=True)  # L-4: required for 90-day deletion
+    child_id = Column(UUID(as_uuid=True), ForeignKey("children.id"), nullable=True)  #required for 90-day deletion
     event_id = Column(UUID(as_uuid=True), ForeignKey("events.id"), nullable=True)
     s3_key = Column(String(500), nullable=True)  # format: photos/{center_id}/{child_id}/{date}/{uuid}.jpg
     caption = Column(Text, nullable=True)
     content_type = Column(String(50), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
-    deleted_at = Column(DateTime(timezone=True), nullable=True)  # L-4/L-7: set by retention job, not hard-deleted
+    deleted_at = Column(DateTime(timezone=True), nullable=True)  #/set by retention job, not hard-deleted
 
     event = relationship("Event", back_populates="photos")
 
@@ -281,13 +281,13 @@ class DailyNarrative(Base):
     )
 
 
-# ─── AI API Logs (Legal: L-5) ─────────────────────────────────
+# ─── AI API Logs ─────────────────────────────────
 
 
 class AiApiLog(Base):
     """Audit log for every OpenAI API call.
 
-    Legal requirement (L-5): log model, tokens, stage per call.
+    Legal requirement: log model, tokens, stage per call.
     NEVER log prompt content or response content — by design.
     Fields intentionally limited to metadata only.
     """
@@ -307,7 +307,7 @@ class AiApiLog(Base):
     # This table is intentionally prompt-free for legal compliance.
 
 
-# ─── Parental Consent (Legal: L-1) ────────────────────────────
+# ─── Parental Consent ────────────────────────────
 
 
 class ParentalConsent(Base):
@@ -358,7 +358,7 @@ class ParentalConsent(Base):
     )
 
 
-# ─── Pending Consent Queue (Legal: L-2) ───────────────────────
+# ─── Pending Consent Queue ───────────────────────
 
 
 class PendingConsentQueue(Base):
@@ -368,7 +368,7 @@ class PendingConsentQueue(Base):
     the raw event reference is stored here instead of being silently dropped.
     Director receives an in-app alert to collect consent.
 
-    Legal reference: legal_agent_prompt.md Issue L-2
+    Legal reference: legal_agent_prompt.md the Legal PRD issue 2
     """
 
     __tablename__ = "pending_consent_queue"
@@ -384,7 +384,7 @@ class PendingConsentQueue(Base):
     resolved_at = Column(DateTime(timezone=True), nullable=True)  # set when consent collected
 
 
-# ─── Consent Gate Audit (Legal: L-2) ──────────────────────────
+# ─── Consent Gate Audit ──────────────────────────
 
 
 class ConsentGateAudit(Base):
@@ -393,7 +393,7 @@ class ConsentGateAudit(Base):
     Written each time get_child_for_processing() returns None.
     Never modified after insert.
 
-    Legal reference: legal_agent_prompt.md Issue L-2, Rule 4
+    Legal reference: legal_agent_prompt.md the Legal PRD issue 2, Rule 4
     """
 
     __tablename__ = "consent_gate_audit"
@@ -407,7 +407,7 @@ class ConsentGateAudit(Base):
     )
 
 
-# ─── Consent Tokens (Legal: L-7) ──────────────────────────────
+# ─── Consent Tokens ──────────────────────────────
 
 
 class ConsentToken(Base):

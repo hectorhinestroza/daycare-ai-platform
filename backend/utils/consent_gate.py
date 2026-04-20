@@ -1,4 +1,4 @@
-"""Consent Gate — Legal Compliance L-2.
+"""Consent Gate — Legal Compliance 2.
 
 The single entry point for all child data in the AI pipeline.
 
@@ -8,7 +8,7 @@ Rules:
 - Every gate block is logged to consent_gate_audit (append-only).
 - Blocked events are queued in pending_consent_queue (not silently dropped).
 
-Legal reference: legal_prd_v1.md §5.3 + legal_agent_prompt.md Rules 1, 4, Issue L-2
+Legal reference: legal_prd_v1.md §5.3 + legal_agent_prompt.md Rules 1, 4, the Legal PRD issue 2
 """
 
 import logging
@@ -53,7 +53,7 @@ def get_child_for_processing(
 
     In development mode: logs a warning and returns the child from the children
     table directly (bypasses consent check). This allows the pipeline to work
-    before L-8 (parental onboarding flow) is implemented.
+    before(parental onboarding flow) is implemented.
 
     Args:
         child_id:       UUID of the child to check consent for
@@ -87,7 +87,7 @@ def get_child_for_processing(
             f"CONSENT DEV BYPASS: child {child_id} has no active consent. "
             f"Gate bypassed in {environment} mode. "
             f"Stage: {pipeline_stage}. "
-            f"This would block in production. Implement L-8 to collect consent."
+            f"This would block in production. Implementto collect consent."
         )
         # Fall back to direct children table for dev
         child_row = db.execute(

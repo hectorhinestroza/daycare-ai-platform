@@ -1,4 +1,4 @@
-"""Legal compliance status helpers — L-9 (passive observability only).
+"""Legal compliance status helpers.
 
 DPAs are one-time founder actions documented in README_LEGAL.md.
 This module provides a passive status read for the /health endpoint.

@@ -1,4 +1,4 @@
-"""Tests for L-5: OpenAI call wrapper + ai_api_logs.
+"""Tests forOpenAI call wrapper + ai_api_logs.
 
 Verifies:
 - Log record is written with correct fields after every call

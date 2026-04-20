@@ -244,7 +244,7 @@ export async function updateContact(centerId, contactId, updates) {
   return res.json();
 }
 
-// ─── Consent (Legal: L-7) ───────────────────────────────────
+// ─── Consent ───────────────────────────────────
 
 export async function fetchConsentDetails(token) {
   const res = await fetch(`${API_BASE}/api/consent/${token}`);

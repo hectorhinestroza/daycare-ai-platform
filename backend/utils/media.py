@@ -24,7 +24,7 @@ async def download_twilio_media(media_url: str) -> tuple[bytes, str]:
 
 
 async def delete_twilio_media(media_url: str) -> None:
-    """Delete media from Twilio servers to enforce privacy (L-3).
+    """Delete media from Twilio servers to enforce privacy.
 
     Errors are swallowed and logged, as deletion failures should not
     crash the main webhook pipeline.

@@ -1,4 +1,4 @@
-"""Public endpoints for parental consent collection (L-7).
+"""Public endpoints for parental consent collection.
 
 These endpoints do NOT require typical Admin or Teacher auth.
 They rely securely on the UUID magic link token.

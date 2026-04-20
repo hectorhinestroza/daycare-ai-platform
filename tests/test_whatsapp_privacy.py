@@ -1,4 +1,4 @@
-"""Tests for L-3: WhatsApp / Twilio Audio Privacy.
+"""Tests forWhatsApp / Twilio Audio Privacy.
 
 Verifies:
 - Twilio media is deleted using an HTTP DELETE request to the MediaUrl

@@ -79,14 +79,14 @@ Work through this once before your first real customer. Check boxes, save PDFs, 
 
 ### Engineering actions
 
-- [ ] `parental_consent` table live in production (L-1 ✅)
-- [ ] `children_with_active_consent` view and consent gate enforcing (L-2 ✅)
-- [ ] Photo EXIF stripping active before any S3 write (L-4 ✅)
-- [ ] S3 bucket lifecycle rule: 90-day expiry, private ACL (L-7 — open)
-- [ ] Photo delivery via pre-signed URLs with ≤1-hour expiry (L-7 — open)
-- [ ] 90-day data retention nightly job scheduled (L-7 — open)
-- [ ] Consent withdrawal flow (72-hour deletion) implemented (L-7 — open)
-- [ ] WhatsApp audio in-memory only, Twilio deletion after transcription (L-3 — open)
+- [ ] `parental_consent` table live in production
+- [ ] `children_with_active_consent` view and consent gate enforcing
+- [ ] Photo EXIF stripping active before any S3 write
+- [ ] S3 bucket lifecycle rule: 90-day expiry, private ACL
+- [ ] Photo delivery via pre-signed URLs with ≤1-hour expiry
+- [ ] 90-day data retention nightly job scheduled
+- [ ] Consent withdrawal flow (72-hour deletion) implemented
+- [ ] WhatsApp audio in-memory only, Twilio deletion after transcription
 
 ---
 

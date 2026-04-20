@@ -1,4 +1,4 @@
-"""Tests for L-2: Consent Gate Dependency.
+"""Tests forConsent Gate Dependency.
 
 Verifies:
 - get_child_for_processing() passes with valid active consent

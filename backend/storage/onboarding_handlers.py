@@ -209,7 +209,7 @@ def add_parent_contact(
     db.commit()
     db.refresh(contact)
 
-    # L-7: Auto-trigger magic link when primary email is added to a PENDING_CONSENT child
+    #Auto-trigger magic link when primary email is added to a PENDING_CONSENT child
     if child.status == "PENDING_CONSENT" and is_primary and email:
         from datetime import datetime, timedelta, timezone
         from backend.storage.models import ConsentToken

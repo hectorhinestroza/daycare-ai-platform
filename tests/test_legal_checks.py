@@ -1,4 +1,4 @@
-"""Tests for L-9: Legal status observability (passive /health fields).
+"""Tests forLegal status observability (passive /health fields).
 
 Verifies:
 - get_legal_status_fields() returns True when env vars set to "confirmed"
