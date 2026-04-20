@@ -297,3 +297,103 @@ class AiApiLog(Base):
 
     # DO NOT ADD: prompt, response, content, or any PII fields here.
     # This table is intentionally prompt-free for legal compliance.
+
+
+# ─── Parental Consent (Legal: L-1) ────────────────────────────
+
+
+class ParentalConsent(Base):
+    """Parental consent record — IMMUTABLE, INSERT-ONLY by design.
+
+    No update operations exist on this table (legal requirement).
+    Consent changes are modeled as new versioned inserts with is_active toggled.
+    Withdrawal sets is_active=False and withdrawn_at on the existing row.
+
+    Legal reference: legal_prd_v1.md §5.2
+    """
+
+    __tablename__ = "parental_consent"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    center_id = Column(UUID(as_uuid=True), ForeignKey("centers.id"), nullable=False)
+    child_id = Column(UUID(as_uuid=True), ForeignKey("children.id"), nullable=False)
+    parent_id = Column(UUID(as_uuid=True), ForeignKey("parent_contacts.id"), nullable=False)
+
+    consent_version = Column(String(20), nullable=False, default="v1.0")
+
+    # Required consent flags — ALL must be TRUE for child to enter pipeline
+    consent_daily_reports = Column(Boolean, nullable=False, default=False)
+    consent_photos = Column(Boolean, nullable=False, default=False)
+    consent_audio_processing = Column(Boolean, nullable=False, default=False)
+    consent_billing_data = Column(Boolean, nullable=False, default=False)
+
+    # AI training consent: always FALSE in V1 — hidden from consent form UI
+    # legal_prd_v1.md §7.1: never set to True without explicit product owner approval
+    consent_ai_training = Column(Boolean, nullable=False, default=False)
+
+    # How the consent was collected
+    consent_method = Column(
+        String(20), nullable=False
+    )  # paper_scan | docusign | email_confirm
+
+    # Audit metadata
+    ip_address = Column(String(50), nullable=True)
+    consented_at = Column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    withdrawn_at = Column(DateTime(timezone=True), nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+
+    # Unique constraint: only one active consent per child at a time
+    __table_args__ = (
+        UniqueConstraint("child_id", "is_active", name="unique_active_consent"),
+    )
+
+
+# ─── Pending Consent Queue (Legal: L-2) ───────────────────────
+
+
+class PendingConsentQueue(Base):
+    """Events/voice memos blocked by the consent gate.
+
+    When get_child_for_processing() returns None (no active consent),
+    the raw event reference is stored here instead of being silently dropped.
+    Director receives an in-app alert to collect consent.
+
+    Legal reference: legal_agent_prompt.md Issue L-2
+    """
+
+    __tablename__ = "pending_consent_queue"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    center_id = Column(UUID(as_uuid=True), ForeignKey("centers.id"), nullable=False)
+    child_id = Column(UUID(as_uuid=True), ForeignKey("children.id"), nullable=False)
+    raw_event_ref = Column(Text, nullable=True)  # JSON reference to the blocked event payload
+    pipeline_stage = Column(String(50), nullable=True)  # which stage was blocked
+    blocked_at = Column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    resolved_at = Column(DateTime(timezone=True), nullable=True)  # set when consent collected
+
+
+# ─── Consent Gate Audit (Legal: L-2) ──────────────────────────
+
+
+class ConsentGateAudit(Base):
+    """Append-only log of every consent gate block event.
+
+    Written each time get_child_for_processing() returns None.
+    Never modified after insert.
+
+    Legal reference: legal_agent_prompt.md Issue L-2, Rule 4
+    """
+
+    __tablename__ = "consent_gate_audit"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    center_id = Column(UUID(as_uuid=True), ForeignKey("centers.id"), nullable=False)
+    child_id = Column(UUID(as_uuid=True), nullable=False)  # not FK — child may not exist
+    pipeline_stage = Column(String(50), nullable=False)
+    timestamp = Column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
