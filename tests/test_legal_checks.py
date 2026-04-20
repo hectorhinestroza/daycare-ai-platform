@@ -1,173 +1,96 @@
-"""Tests for L-9: DPA Verification Startup Guard.
+"""Tests for L-9: Legal status observability (passive /health fields).
 
 Verifies:
-- Production startup fails when any required DPA env var is missing
-- Development / sandbox startup logs warnings but does not block
-- /health endpoint reflects legal_checks status correctly
+- get_legal_status_fields() returns True when env vars set to "confirmed"
+- Returns False when env vars are missing or wrong value
+- Returns dict with correct keys
+- Application starts regardless of env var state (no startup blocker)
 """
 
-import pytest
-from unittest.mock import MagicMock, patch
+import os
+from unittest.mock import patch
 
 
-# ─── Tests: run_legal_checks ──────────────────────────────────
+class TestGetLegalStatusFields:
+    """get_legal_status_fields() returns passive boolean status dict."""
 
+    def test_all_true_when_all_confirmed(self):
+        """All three fields True when env vars set to 'confirmed'."""
+        from backend.startup.legal_checks import get_legal_status_fields
 
-class TestLegalChecksProduction:
-    """run_legal_checks must raise RuntimeError in production if any DPA var is missing."""
+        env = {
+            "DPA_OPENAI_CONFIRMED": "confirmed",
+            "DPA_TWILIO_CONFIRMED": "confirmed",
+            "OPENAI_ZERO_RETENTION_CONFIRMED": "confirmed",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            status = get_legal_status_fields()
 
-    def test_production_passes_when_all_vars_confirmed(self):
-        """All three vars set to 'confirmed' → no exception in production."""
-        from backend.startup.legal_checks import run_legal_checks
+        assert status["openai_dpa_confirmed"] is True
+        assert status["twilio_dpa_confirmed"] is True
+        assert status["openai_zero_retention_confirmed"] is True
 
-        settings = MagicMock()
-        settings.dpa_openai_confirmed = "confirmed"
-        settings.dpa_twilio_confirmed = "confirmed"
-        settings.openai_zero_retention_confirmed = "confirmed"
+    def test_false_when_openai_dpa_missing(self):
+        """openai_dpa_confirmed is False when DPA_OPENAI_CONFIRMED not set."""
+        from backend.startup.legal_checks import get_legal_status_fields
 
-        # Should not raise
-        run_legal_checks(environment="production", settings=settings)
+        env = {
+            "DPA_TWILIO_CONFIRMED": "confirmed",
+            "OPENAI_ZERO_RETENTION_CONFIRMED": "confirmed",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            # Remove the key if present
+            os.environ.pop("DPA_OPENAI_CONFIRMED", None)
+            status = get_legal_status_fields()
 
-    def test_production_raises_if_openai_dpa_missing(self):
-        """Missing DPA_OPENAI_CONFIRMED → RuntimeError with clear message."""
-        from backend.startup.legal_checks import run_legal_checks
+        assert status["openai_dpa_confirmed"] is False
 
-        settings = MagicMock()
-        settings.dpa_openai_confirmed = ""  # missing
-        settings.dpa_twilio_confirmed = "confirmed"
-        settings.openai_zero_retention_confirmed = "confirmed"
+    def test_false_when_value_not_confirmed(self):
+        """False if env var is set but not exactly 'confirmed' (e.g. 'yes', 'true')."""
+        from backend.startup.legal_checks import get_legal_status_fields
 
-        with pytest.raises(RuntimeError) as exc_info:
-            run_legal_checks(environment="production", settings=settings)
+        for wrong_value in ["yes", "true", "1", "TRUE", "Confirmed", ""]:
+            env = {"DPA_OPENAI_CONFIRMED": wrong_value}
+            with patch.dict(os.environ, env, clear=False):
+                status = get_legal_status_fields()
+            assert status["openai_dpa_confirmed"] is False, \
+                f"Expected False for value={wrong_value!r}"
 
-        assert "DPA_OPENAI_CONFIRMED" in str(exc_info.value)
+    def test_returns_all_required_keys(self):
+        """Dict must have exactly the three documented keys."""
+        from backend.startup.legal_checks import get_legal_status_fields
 
-    def test_production_raises_if_twilio_dpa_missing(self):
-        """Missing DPA_TWILIO_CONFIRMED → RuntimeError with clear message."""
-        from backend.startup.legal_checks import run_legal_checks
+        status = get_legal_status_fields()
+        required_keys = {
+            "openai_dpa_confirmed",
+            "twilio_dpa_confirmed",
+            "openai_zero_retention_confirmed",
+        }
+        assert required_keys == set(status.keys())
 
-        settings = MagicMock()
-        settings.dpa_openai_confirmed = "confirmed"
-        settings.dpa_twilio_confirmed = ""  # missing
-        settings.openai_zero_retention_confirmed = "confirmed"
+    def test_all_false_when_no_vars_set(self):
+        """All False when no env vars are set — reminder not a blocker."""
+        from backend.startup.legal_checks import get_legal_status_fields
 
-        with pytest.raises(RuntimeError) as exc_info:
-            run_legal_checks(environment="production", settings=settings)
+        # Remove all three vars
+        clean_env = {k: v for k, v in os.environ.items()
+                     if k not in {
+                         "DPA_OPENAI_CONFIRMED",
+                         "DPA_TWILIO_CONFIRMED",
+                         "OPENAI_ZERO_RETENTION_CONFIRMED",
+                     }}
+        with patch.dict(os.environ, clean_env, clear=True):
+            status = get_legal_status_fields()
 
-        assert "DPA_TWILIO_CONFIRMED" in str(exc_info.value)
+        assert all(v is False for v in status.values()), \
+            "All values should be False when env vars absent"
 
-    def test_production_raises_if_zero_retention_missing(self):
-        """Missing OPENAI_ZERO_RETENTION_CONFIRMED → RuntimeError with clear message."""
-        from backend.startup.legal_checks import run_legal_checks
+    def test_no_exception_raised_when_vars_missing(self):
+        """Missing env vars must NEVER raise — this is observability, not enforcement."""
+        from backend.startup.legal_checks import get_legal_status_fields
 
-        settings = MagicMock()
-        settings.dpa_openai_confirmed = "confirmed"
-        settings.dpa_twilio_confirmed = "confirmed"
-        settings.openai_zero_retention_confirmed = ""  # missing
-
-        with pytest.raises(RuntimeError) as exc_info:
-            run_legal_checks(environment="production", settings=settings)
-
-        assert "OPENAI_ZERO_RETENTION_CONFIRMED" in str(exc_info.value)
-
-    def test_production_error_message_is_actionable(self):
-        """Error message must tell the engineer exactly what to do."""
-        from backend.startup.legal_checks import run_legal_checks
-
-        settings = MagicMock()
-        settings.dpa_openai_confirmed = ""
-        settings.dpa_twilio_confirmed = "confirmed"
-        settings.openai_zero_retention_confirmed = "confirmed"
-
-        with pytest.raises(RuntimeError) as exc_info:
-            run_legal_checks(environment="production", settings=settings)
-
-        # Must contain actionable text, not just the var name
-        error_msg = str(exc_info.value)
-        assert "DPA" in error_msg or "confirmed" in error_msg.lower()
-
-
-class TestLegalChecksDevelopment:
-    """In development/sandbox mode, missing vars log warnings but do not block startup."""
-
-    def test_development_does_not_raise_with_no_vars(self):
-        """Development mode with all vars empty → no exception."""
-        from backend.startup.legal_checks import run_legal_checks
-
-        settings = MagicMock()
-        settings.dpa_openai_confirmed = ""
-        settings.dpa_twilio_confirmed = ""
-        settings.openai_zero_retention_confirmed = ""
-
-        # Should not raise in development
-        run_legal_checks(environment="development", settings=settings)
-
-    def test_sandbox_does_not_raise_with_no_vars(self):
-        """Sandbox mode with all vars empty → no exception."""
-        from backend.startup.legal_checks import run_legal_checks
-
-        settings = MagicMock()
-        settings.dpa_openai_confirmed = ""
-        settings.dpa_twilio_confirmed = ""
-        settings.openai_zero_retention_confirmed = ""
-
-        run_legal_checks(environment="sandbox", settings=settings)
-
-    def test_development_logs_warning_for_missing_dpa(self, caplog):
-        """Missing DPA vars in development → warning logged, not raised."""
-        import logging
-        from backend.startup.legal_checks import run_legal_checks
-
-        settings = MagicMock()
-        settings.dpa_openai_confirmed = ""
-        settings.dpa_twilio_confirmed = "confirmed"
-        settings.openai_zero_retention_confirmed = "confirmed"
-
-        with caplog.at_level(logging.WARNING, logger="backend.startup.legal_checks"):
-            run_legal_checks(environment="development", settings=settings)
-
-        assert any("DPA" in record.message or "dpa" in record.message.lower()
-                   for record in caplog.records)
-
-
-# ─── Tests: get_legal_checks_status ───────────────────────────
-
-
-class TestLegalChecksStatus:
-    """get_legal_checks_status() must return the correct status string."""
-
-    def test_returns_passing_when_all_confirmed(self):
-        """All three confirmed → 'passing'."""
-        from backend.startup.legal_checks import get_legal_checks_status
-
-        settings = MagicMock()
-        settings.dpa_openai_confirmed = "confirmed"
-        settings.dpa_twilio_confirmed = "confirmed"
-        settings.openai_zero_retention_confirmed = "confirmed"
-
-        status = get_legal_checks_status(settings=settings)
-        assert status == "passing"
-
-    def test_returns_warning_when_some_missing(self):
-        """Some vars missing → 'warning'."""
-        from backend.startup.legal_checks import get_legal_checks_status
-
-        settings = MagicMock()
-        settings.dpa_openai_confirmed = ""
-        settings.dpa_twilio_confirmed = "confirmed"
-        settings.openai_zero_retention_confirmed = "confirmed"
-
-        status = get_legal_checks_status(settings=settings)
-        assert status == "warning"
-
-    def test_returns_blocking_when_all_missing(self):
-        """All vars missing → 'blocking'."""
-        from backend.startup.legal_checks import get_legal_checks_status
-
-        settings = MagicMock()
-        settings.dpa_openai_confirmed = ""
-        settings.dpa_twilio_confirmed = ""
-        settings.openai_zero_retention_confirmed = ""
-
-        status = get_legal_checks_status(settings=settings)
-        assert status == "blocking"
+        clean_env = {}
+        with patch.dict(os.environ, clean_env, clear=True):
+            # Should complete without exception
+            status = get_legal_status_fields()
+        assert isinstance(status, dict)
