@@ -235,3 +235,27 @@ export async function updateContact(centerId, contactId, updates) {
   if (!res.ok) throw new Error(`Failed to update contact: ${res.status}`);
   return res.json();
 }
+
+// ─── Consent (Legal: L-7) ───────────────────────────────────
+
+export async function fetchConsentDetails(token) {
+  const res = await fetch(`${API_BASE}/api/consent/${token}`);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Failed to fetch consent details: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function submitConsent(token, data) {
+  const res = await fetch(`${API_BASE}/api/consent/${token}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || `Failed to submit consent: ${res.status}`);
+  }
+  return res.json();
+}

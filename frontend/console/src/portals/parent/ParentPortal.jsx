@@ -129,6 +129,25 @@ export default function ParentPortal({ centerId, childId }) {
     return () => clearInterval(interval);
   }, [loadData]);
 
+  if (child?.status === 'PENDING_CONSENT') {
+    return (
+      <div className="min-h-screen bg-surface px-6 pt-32 text-center card-appear">
+        <div className="w-20 h-20 bg-[#fff3e0] rounded-full flex items-center justify-center mx-auto mb-6 shadow-ambient">
+          <span className="material-symbols-outlined text-4xl text-[#e65100]" style={{ fontVariationSettings: "'FILL' 1" }}>
+            mark_email_unread
+          </span>
+        </div>
+        <h2 className="font-headline text-3xl font-semibold mb-3 text-on-surface tracking-tight">Setup Required</h2>
+        <p className="text-on-surface-variant text-base max-w-sm mx-auto leading-relaxed mb-6">
+          Your portal for <span className="font-medium text-on-surface">{child.name.split(' ')[0]}</span> is almost ready! We sent a secure setup link to the primary email on file.
+        </p>
+        <p className="text-sm text-on-surface-variant">
+          Please check your inbox (and spam folder) to complete your privacy setup and unlock the portal.
+        </p>
+      </div>
+    );
+  }
+
   const dayGroups = groupByDate(events);
 
   return (

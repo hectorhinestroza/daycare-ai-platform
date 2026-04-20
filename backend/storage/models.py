@@ -405,3 +405,30 @@ class ConsentGateAudit(Base):
     timestamp = Column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
     )
+
+
+# ─── Consent Tokens (Legal: L-7) ──────────────────────────────
+
+
+class ConsentToken(Base):
+    """Magic link tokens for parental consent onboarding.
+    
+    Generated when a primary email contact is added to a PENDING_CONSENT child.
+    Sent via email (stubbed for now).
+    """
+
+    __tablename__ = "consent_tokens"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    center_id = Column(UUID(as_uuid=True), ForeignKey("centers.id"), nullable=False)
+    child_id = Column(UUID(as_uuid=True), ForeignKey("children.id"), nullable=False)
+    parent_id = Column(UUID(as_uuid=True), ForeignKey("parent_contacts.id"), nullable=False)
+    
+    token = Column(UUID(as_uuid=True), unique=True, nullable=False, default=uuid.uuid4)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    child = relationship("Child")
+    parent = relationship("ParentContact")
+    center = relationship("Center")

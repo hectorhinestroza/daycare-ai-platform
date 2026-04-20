@@ -3,9 +3,16 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
 import ParentPortal from './portals/parent/ParentPortal.jsx'
+import ConsentPage from './portals/ConsentPortal/ConsentPage.jsx'
 
 function Router() {
   const path = window.location.pathname;
+
+  // /consent/:token
+  const consentMatch = path.match(/^\/consent\/([^/]+)/);
+  if (consentMatch) {
+    return <ConsentPage token={consentMatch[1]} />;
+  }
 
   // /parent/:centerId/:childId
   const parentMatch = path.match(/^\/parent\/([^/]+)\/([^/]+)/);

@@ -198,6 +198,30 @@ def add_parent_contact(
     db.add(contact)
     db.commit()
     db.refresh(contact)
+
+    # L-7: Auto-trigger magic link when primary email is added to a PENDING_CONSENT child
+    if child.status == "PENDING_CONSENT" and is_primary and email:
+        from datetime import datetime, timedelta, timezone
+        from backend.storage.models import ConsentToken
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        
+        token_record = ConsentToken(
+            id=uuid.uuid4(),
+            center_id=center_id,
+            child_id=child_id,
+            parent_id=contact.id,
+            token=uuid.uuid4(),
+            expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+        )
+        db.add(token_record)
+        db.commit()
+        
+        # Stub the email sending for now
+        magic_link = f"https://console.affirmi.com/consent/{token_record.token}"
+        logger.info(f"EMAIL STUB: Sent consent magic link to {email}: {magic_link}")
+
     return contact
 
 
