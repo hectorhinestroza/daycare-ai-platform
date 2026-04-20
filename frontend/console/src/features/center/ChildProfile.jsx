@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { fetchChild, updateChild, addContact } from '../../api';
+import { fetchChild, updateChild, addContact, deleteChild } from '../../api';
 import ContactRow from './ContactRow';
 
 const STATUSES = ['ENROLLED', 'ACTIVE', 'WAITLIST', 'UNENROLLED'];
@@ -276,6 +276,29 @@ export default function ChildProfile({ child, rooms, centerId, addToast, onUpdat
             </div>
           </form>
         )}
+      </div>
+
+      {/* ── Danger Zone ── */}
+      <div className="pt-6 mt-6 border-t border-error/20 flex justify-end">
+        <button
+          onClick={async () => {
+            if (!confirm(`Are you completely sure you want to permanently delete ${child.name}? This cannot be undone.`)) return;
+            setSaving(true);
+            try {
+              await deleteChild(centerId, child.id);
+              addToast('Child deleted permanently', 'info');
+              onUpdate();
+            } catch (err) {
+              addToast(err.message, 'error');
+              setSaving(false);
+            }
+          }}
+          disabled={saving}
+          className="flex items-center gap-1.5 text-xs text-error hover:text-on-error-container hover:bg-error-container/40 px-3 py-2 rounded transition-colors"
+        >
+          <span className="material-symbols-outlined text-[18px]">delete_forever</span>
+          Delete Child
+        </button>
       </div>
     </div>
   );

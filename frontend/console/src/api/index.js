@@ -214,7 +214,15 @@ export async function updateChild(centerId, childId, updates) {
   return res.json();
 }
 
-// ─── Onboarding: Contacts ───────────────────────────────────
+export async function deleteChild(centerId, childId) {
+  const res = await fetch(`${API_BASE}/api/children/${centerId}/${childId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error(`Failed to delete child: ${res.status}`);
+  return res.status === 204;
+}
+
+// ─── Onboarding: Parent Contacts ───────────────────────────────────
 
 export async function addContact(centerId, childId, data) {
   const res = await fetch(`${API_BASE}/api/children/${centerId}/${childId}/contacts`, {

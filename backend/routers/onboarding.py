@@ -18,6 +18,7 @@ from backend.storage.onboarding_handlers import (
     create_child,
     create_room,
     create_teacher,
+    delete_child,
     delete_room,
     get_child,
     list_children,
@@ -264,6 +265,13 @@ def update_child_endpoint(center_id: UUID, child_id: UUID, body: ChildUpdate, db
     if not child:
         raise HTTPException(status_code=404, detail="Child not found")
     return child
+
+
+@router.delete("/api/children/{center_id}/{child_id}", status_code=204)
+def delete_child_endpoint(center_id: UUID, child_id: UUID, db: Session = Depends(get_db)):
+    """Delete a child."""
+    if not delete_child(db, center_id, child_id):
+        raise HTTPException(status_code=404, detail="Child not found")
 
 
 # ─── Parent Contact Endpoints ─────────────────────────────────

@@ -166,6 +166,16 @@ def update_child(
     return child
 
 
+def delete_child(db: Session, center_id: uuid.UUID, child_id: uuid.UUID) -> bool:
+    """Delete a child profile and cascade delete their contacts/events (depending on DB constraints)."""
+    child = get_child(db, center_id, child_id)
+    if not child:
+        return False
+    db.delete(child)
+    db.commit()
+    return True
+
+
 # ─── Parent Contacts ──────────────────────────────────────────
 
 
