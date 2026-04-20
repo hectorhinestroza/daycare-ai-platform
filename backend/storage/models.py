@@ -200,17 +200,25 @@ class Event(Base):
 
 
 class Photo(Base):
-    """Photo references — actual images stored in S3, not in DB."""
+    """Photo references — legal-compliant shape (L-4).
+
+    Actual image bytes stored in S3 (EXIF-stripped before upload).
+    S3 key format: photos/{center_id}/{child_id}/{date}/{uuid}.jpg — no PII.
+    Photos older than 90 days are deleted nightly (L-7 retention job).
+    All delivery via pre-signed URLs with 1-hour expiry maximum.
+    """
 
     __tablename__ = "photos"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     center_id = Column(UUID(as_uuid=True), ForeignKey("centers.id"), nullable=False)
+    child_id = Column(UUID(as_uuid=True), ForeignKey("children.id"), nullable=True)  # L-4: required for 90-day deletion
     event_id = Column(UUID(as_uuid=True), ForeignKey("events.id"), nullable=True)
-    s3_key = Column(String(500), nullable=True)  # populated when S3 is set up
+    s3_key = Column(String(500), nullable=True)  # format: photos/{center_id}/{child_id}/{date}/{uuid}.jpg
     caption = Column(Text, nullable=True)
     content_type = Column(String(50), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    deleted_at = Column(DateTime(timezone=True), nullable=True)  # L-4/L-7: set by retention job, not hard-deleted
 
     event = relationship("Event", back_populates="photos")
 
