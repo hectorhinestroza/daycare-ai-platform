@@ -112,7 +112,7 @@ class Child(Base):
     name = Column(String(255), nullable=False)
     dob = Column(Date, nullable=True)
     room_id = Column(UUID(as_uuid=True), ForeignKey("rooms.id"), nullable=True)
-    status = Column(String(20), default="ENROLLED")  # ACTIVE | ENROLLED | WAITLIST | UNENROLLED
+    status = Column(String(20), default="PENDING_CONSENT")  # ACTIVE | ENROLLED | WAITLIST | UNENROLLED | PENDING_CONSENT
     allergies = Column(Text, nullable=True)
     medical_notes = Column(Text, nullable=True)
     enrollment_date = Column(Date, default=date.today)

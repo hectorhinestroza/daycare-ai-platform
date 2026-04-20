@@ -82,7 +82,7 @@ class ChildCreate(BaseModel):
     room_id: Optional[UUID] = None
     allergies: Optional[str] = None
     medical_notes: Optional[str] = None
-    status: str = "ENROLLED"
+    status: str = "PENDING_CONSENT"
 
 
 class ChildUpdate(BaseModel):

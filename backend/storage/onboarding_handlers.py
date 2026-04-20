@@ -108,7 +108,7 @@ def create_child(
     room_id: Optional[uuid.UUID] = None,
     allergies: Optional[str] = None,
     medical_notes: Optional[str] = None,
-    status: str = "ENROLLED",
+    status: str = "PENDING_CONSENT",
 ) -> Child:
     """Enroll a new child."""
     child = Child(

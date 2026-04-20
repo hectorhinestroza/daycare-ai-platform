@@ -171,7 +171,7 @@ def test_create_child(db_session):
     assert resp.status_code == 201
     data = resp.json()
     assert data["name"] == "Jason"
-    assert data["status"] == "ENROLLED"
+    assert data["status"] == "PENDING_CONSENT"
     assert data["allergies"] == "peanuts"
 
 
@@ -219,7 +219,7 @@ def test_update_child_status(db_session):
     """Change child status (enrollment workflow)."""
     client = TestClient(app)
     child = client.post(f"/api/children/{CENTER_ID}", json={"name": "Sam"}).json()
-    assert child["status"] == "ENROLLED"
+    assert child["status"] == "PENDING_CONSENT"
 
     resp = client.patch(f"/api/children/{CENTER_ID}/{child['id']}", json={"status": "ACTIVE"})
     assert resp.json()["status"] == "ACTIVE"
