@@ -1,3 +1,5 @@
+# NOT CURRENT ANYMORE LOOK AT .private/legal_prd_v1.md
+
 # Legal Compliance PRD — Children's Data & Privacy
 ## Daycare AI Operations Platform
 **Version:** 1.0  
