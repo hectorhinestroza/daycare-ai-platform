@@ -229,7 +229,7 @@ def add_parent_contact(
         db.commit()
         
         # Stub the email sending for now
-        magic_link = f"https://console.affirmi.com/consent/{token_record.token}"
+        magic_link = f"https://console.raina.com/consent/{token_record.token}"
         logger.info(f"EMAIL STUB: Sent consent magic link to {email}: {magic_link}")
 
     return contact

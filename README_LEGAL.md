@@ -1,4 +1,4 @@
-# Affirmi — Legal Engineering Reference
+# Raina — Legal Engineering Reference
 
 > **Pre-production reading.** Work through the checklist in §4 before your first real customer.
 > No environment variables, no deploy steps — just founder actions and file saves.
@@ -11,7 +11,7 @@
 
 ### Steps
 
-1. Log into [platform.openai.com](https://platform.openai.com) with the Affirmi account
+1. Log into [platform.openai.com](https://platform.openai.com) with the Raina account
 2. Go to **Settings → Data Controls → API data usage policies**
 3. Confirm **"API data is not used to train OpenAI models"** is active for your account tier
 4. Navigate to the [OpenAI Data Processing Addendum](https://platform.openai.com/account/data-processing-agreement)
@@ -43,7 +43,7 @@ If absent, `/health` reports `false` — a reminder, never a deploy blocker.
 
 ### Steps
 
-1. Log into [console.twilio.com](https://console.twilio.com) with the Affirmi account
+1. Log into [console.twilio.com](https://console.twilio.com) with the Raina account
 2. Execute the [Twilio Data Protection Addendum](https://www.twilio.com/legal/data-protection-addendum)
 3. **Save a copy to `/legal/dpa/twilio_dpa_<YYYY-MM>.pdf`**
 
@@ -74,7 +74,7 @@ Work through this once before your first real customer. Check boxes, save PDFs, 
 - [ ] OpenAI zero-retention confirmed active at platform.openai.com → Settings → Data Controls
 - [ ] Twilio DPA downloaded and saved to `/legal/dpa/twilio_dpa_<YYYY-MM>.pdf`
 - [ ] V1 Consent Form reviewed by attorney
-- [ ] Privacy Policy published at `affirmi.com/privacy`
+- [ ] Privacy Policy published at `raina.com/privacy`
 - [ ] WhatsApp Business Account registered (before 3rd center)
 
 ### Engineering actions

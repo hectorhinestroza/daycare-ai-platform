@@ -142,7 +142,7 @@ export default function ConsentPage({ token }) {
                 checked={reports} 
                 onChange={setReports}
                 title="Daily Reports & Logs"
-                desc={`I consent to Affirmi generating and storing daily reports, logs, and milestone records for ${details.child_first_name}.`}
+                desc={`I consent to Raina generating and storing daily reports, logs, and milestone records for ${details.child_first_name}.`}
               />
               <Checkbox 
                 id="photos" 
@@ -156,7 +156,7 @@ export default function ConsentPage({ token }) {
                 checked={audio} 
                 onChange={setAudio}
                 title="Audio Processing"
-                desc="I consent to the processing of teacher voice memos by Affirmi to structure updates. I understand these are never used for AI training and are deleted immediately after processing."
+                desc="I consent to the processing of teacher voice memos by Raina to structure updates. I understand these are never used for AI training and are deleted immediately after processing."
               />
               <Checkbox 
                 id="billing" 
@@ -205,7 +205,7 @@ export default function ConsentPage({ token }) {
               )}
             </button>
             <p className="text-center text-[10px] text-on-surface-variant uppercase tracking-widest mt-4">
-              Protected by Affirmi Security
+              Protected by Raina Security
             </p>
           </form>
         </div>
