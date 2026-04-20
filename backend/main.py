@@ -26,6 +26,7 @@ from backend.routers.events import router as events_router
 from backend.routers.narratives import router as narratives_router
 from backend.routers.onboarding import router as onboarding_router
 from backend.routers.whatsapp import router as whatsapp_router
+from backend.startup.legal_checks import get_legal_checks_status, run_legal_checks
 from backend.storage.database import Base, engine
 
 
@@ -33,6 +34,10 @@ from backend.storage.database import Base, engine
 async def lifespan(app: FastAPI):
     """Create DB tables on startup (dev mode). Alembic handles prod migrations."""
     import backend.storage.models  # noqa: F401 — register all models with Base
+
+    # L-9: DPA verification guard — blocks production if DPAs not confirmed
+    settings = get_settings()
+    run_legal_checks(environment=settings.environment, settings=settings)
 
     Base.metadata.create_all(bind=engine)
     logger.info("Database tables created / verified")
@@ -74,4 +79,8 @@ async def root() -> Dict[str, str]:
 
 @app.get("/health")
 async def health() -> Dict[str, str]:
-    return {"status": "healthy"}
+    settings = get_settings()
+    return {
+        "status": "healthy",
+        "legal_checks": get_legal_checks_status(settings=settings),
+    }
