@@ -8,12 +8,14 @@ Event types: food, nap, potty, kudos, observation, health_check,
 import json
 import logging
 from typing import List, Optional
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from openai import OpenAI
 from pydantic import ValidationError
+from sqlalchemy.orm import Session
 
 from backend.config import get_settings
+from backend.utils.openai_wrapper import call_openai_with_logging
 from schemas.events import (
     ALWAYS_REVIEW_TYPES,
     BaseEvent,
@@ -37,6 +39,11 @@ CRITICAL RULES:
 - If a name is unclear or ambiguous, still extract the event but set confidence_score below 0.7.
 - NEVER return an empty events array if the transcript describes activities.
 
+CHILD VOICE INSTRUCTION (legal requirement — do not modify):
+If any child's voice is audible in this audio, treat the entire recording as 
+containing children's personal information. Do not transcribe or quote direct 
+speech from any child. Describe only the observable events narrated by the teacher.
+
 For each distinct event mentioned, extract:
 - event_type: one of "food", "nap", "potty", "kudos", "observation", "health_check", "absence", "note", "activity", "incident", "medication"
 - child_name: the child's name exactly as mentioned in the transcript
@@ -57,16 +64,20 @@ Example — teacher says "Carlos played basketball, then had a snack and took a 
 async def extract_events(
     transcript: str,
     center_id: str,
+    db: Session,
     child_name: Optional[str] = None,
     known_children: Optional[List[str]] = None,
+    child_id: Optional[UUID] = None,
 ) -> List[BaseEvent]:
     """Extract structured events from a transcript using GPT-4o.
 
     Args:
-        transcript: Raw transcript text from Whisper
-        center_id: Center ID for multi-tenant isolation
-        child_name: Optional pre-set child context from /child command
+        transcript:     Raw transcript text from Whisper
+        center_id:      Center ID for multi-tenant isolation
+        db:             SQLAlchemy session — used for OpenAI audit log (L-5)
+        child_name:     Optional pre-set child context from /child command
         known_children: Optional list of actual registered child names for resolution
+        child_id:       Optional resolved child UUID for the audit log
 
     Returns:
         List of validated BaseEvent objects
@@ -87,7 +98,12 @@ async def extract_events(
     logger.info(f"Extracting events from transcript ({len(transcript)} chars)")
 
     try:
-        response = client.chat.completions.create(
+        response = call_openai_with_logging(
+            client=client,
+            db=db,
+            center_id=center_id,
+            child_id=child_id,
+            pipeline_stage="extraction",
             model="gpt-4o",
             temperature=0,
             response_format={"type": "json_object"},

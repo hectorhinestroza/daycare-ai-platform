@@ -271,3 +271,29 @@ class DailyNarrative(Base):
     __table_args__ = (
         UniqueConstraint("center_id", "child_id", "date", name="uq_narrative_center_child_date"),
     )
+
+
+# ─── AI API Logs (Legal: L-5) ─────────────────────────────────
+
+
+class AiApiLog(Base):
+    """Audit log for every OpenAI API call.
+
+    Legal requirement (L-5): log model, tokens, stage per call.
+    NEVER log prompt content or response content — by design.
+    Fields intentionally limited to metadata only.
+    """
+
+    __tablename__ = "ai_api_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    center_id = Column(UUID(as_uuid=True), ForeignKey("centers.id"), nullable=False)
+    child_id = Column(UUID(as_uuid=True), ForeignKey("children.id"), nullable=True)  # nullable: some stages pre-resolution
+    model = Column(String(50), nullable=False)
+    pipeline_stage = Column(String(50), nullable=False)  # extraction | narrative | transcription
+    input_token_count = Column(Float, nullable=True)   # from response.usage.prompt_tokens
+    output_token_count = Column(Float, nullable=True)  # from response.usage.completion_tokens
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    # DO NOT ADD: prompt, response, content, or any PII fields here.
+    # This table is intentionally prompt-free for legal compliance.

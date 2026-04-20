@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from backend.config import get_settings
 from backend.storage.models import Child, Event, Photo
+from backend.utils.openai_wrapper import call_openai_async_with_logging
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +161,12 @@ async def generate_narrative(
     )
 
     try:
-        response = await client.chat.completions.create(
+        response = await call_openai_async_with_logging(
+            client=client,
+            db=db,
+            center_id=center_id,
+            child_id=child_id,
+            pipeline_stage="narrative",
             model="gpt-4o",
             temperature=0,
             response_format={"type": "json_object"},
