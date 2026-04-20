@@ -149,6 +149,15 @@ async def whatsapp_webhook(
             ext = "ogg" if "ogg" in content_type else "mp4"
             transcript = await transcribe_audio(audio_bytes, f"voice_memo.{ext}")
 
+            # L-3: Zero retention for audio — immediately delete from Twilio and clear memory
+            import gc
+            from backend.utils.media import delete_twilio_media
+            import asyncio
+            # Fire and forget Twilio deletion
+            asyncio.create_task(delete_twilio_media(MediaUrl0))
+            del audio_bytes
+            gc.collect()
+
             # 1. Fetch known children for context
             center_children = get_children_by_center(db, teacher.center_id)
             known_names = [c.name for c in center_children]
