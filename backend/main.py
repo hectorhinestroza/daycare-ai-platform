@@ -27,6 +27,7 @@ from backend.routers.narratives import router as narratives_router
 from backend.routers.onboarding import router as onboarding_router
 from backend.routers.whatsapp import router as whatsapp_router
 from backend.routers.consent import router as consent_router
+from backend.services.scheduler import start_scheduler
 from backend.startup.legal_checks import get_legal_status_fields
 from backend.storage.database import Base, engine
 
@@ -38,7 +39,10 @@ async def lifespan(app: FastAPI):
 
     Base.metadata.create_all(bind=engine)
     logger.info("Database tables created / verified")
+
+    scheduler = start_scheduler()
     yield
+    scheduler.shutdown(wait=False)
     logger.info("Shutting down")
 
 
