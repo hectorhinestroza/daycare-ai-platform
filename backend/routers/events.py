@@ -15,6 +15,7 @@ import logging
 from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
@@ -56,41 +57,56 @@ async def _refresh_narrative_if_exists(center_id: UUID, child_id: UUID, event_da
     summary without the director needing to manually trigger EOD reports.
     Only regenerates — never creates a narrative that didn't exist yet.
     Debounced: subsequent calls within 2 minutes for the same child+date are skipped.
+
+    Uses the center's local timezone to determine the target date — late-night events
+    (e.g. 10:50 PM ET) have event_time in UTC on the *next* UTC calendar day, but the
+    narrative lives on the *local* calendar date.
     """
     from backend.services.narrative import generate_narrative
     from backend.storage.narrative_handlers import get_narrative, upsert_narrative
+    from backend.storage.models import Center as CenterModel
 
-    key = (str(center_id), str(child_id), str(event_date))
     now = datetime.now(timezone.utc)
-
-    # Debounce check — atomic: no await between the read and the write
-    last_triggered = _narrative_refresh_last_triggered.get(key)
-    if last_triggered and (now - last_triggered).total_seconds() < _NARRATIVE_REFRESH_COOLDOWN_SECONDS:
-        logger.debug(f"Narrative refresh debounced for child {child_id} on {event_date}")
-        return
-    _narrative_refresh_last_triggered[key] = now
-
-    # Evict entries older than 10 minutes to prevent unbounded memory growth
-    cutoff = now.timestamp() - 600
-    stale = [k for k, v in _narrative_refresh_last_triggered.items() if v.timestamp() < cutoff]
-    for k in stale:
-        del _narrative_refresh_last_triggered[k]
 
     db = SessionLocal()
     try:
-        existing = get_narrative(db, center_id, child_id, event_date)
+        # Resolve center's local date so late-night events (e.g. 10:50 PM ET = next UTC day)
+        # still match the narrative stored for the local calendar date.
+        center = db.query(CenterModel).filter(CenterModel.id == center_id).first()
+        tz_str = (center.timezone if center else None) or "America/New_York"
+        try:
+            target_date = datetime.now(ZoneInfo(tz_str)).date()
+        except (ZoneInfoNotFoundError, Exception):
+            target_date = event_date
+
+        key = (str(center_id), str(child_id), str(target_date))
+
+        # Debounce check — atomic: no await between the read and the write
+        last_triggered = _narrative_refresh_last_triggered.get(key)
+        if last_triggered and (now - last_triggered).total_seconds() < _NARRATIVE_REFRESH_COOLDOWN_SECONDS:
+            logger.debug(f"Narrative refresh debounced for child {child_id} on {target_date}")
+            return
+        _narrative_refresh_last_triggered[key] = now
+
+        # Evict entries older than 10 minutes to prevent unbounded memory growth
+        cutoff = now.timestamp() - 600
+        stale = [k for k, v in _narrative_refresh_last_triggered.items() if v.timestamp() < cutoff]
+        for k in stale:
+            del _narrative_refresh_last_triggered[k]
+
+        existing = get_narrative(db, center_id, child_id, target_date)
         if not existing or existing.admin_override:
             return  # Nothing to refresh
 
-        result = await generate_narrative(db, center_id, child_id, event_date)
+        result = await generate_narrative(db, center_id, child_id, target_date)
         upsert_narrative(
             db,
             center_id=center_id,
             child_id=child_id,
-            target_date=event_date,
+            target_date=target_date,
             **{k: result[k] for k in ("headline", "body", "tone", "photo_captions")},
         )
-        logger.info(f"Narrative refreshed for child {child_id} on {event_date} after event approval")
+        logger.info(f"Narrative refreshed for child {child_id} on {target_date} after event approval")
     except Exception as e:
         logger.error(f"Background narrative refresh failed for child {child_id}: {e}", exc_info=True)
     finally:

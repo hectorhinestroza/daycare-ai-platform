@@ -12,15 +12,16 @@ Edge cases handled:
 import json
 import logging
 import uuid
-from datetime import date as date_type
+from datetime import date as date_type, datetime, time, timedelta, timezone
 from typing import List, Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from openai import AsyncOpenAI
-from sqlalchemy import cast, Date, func, or_
+from sqlalchemy import and_, cast, Date, func, or_
 from sqlalchemy.orm import Session
 
 from backend.config import get_settings
-from backend.storage.models import Child, Event, Photo
+from backend.storage.models import Center, Child, Event, Photo
 from backend.utils.openai_wrapper import call_openai_async_with_logging
 
 logger = logging.getLogger(__name__)
@@ -95,6 +96,24 @@ async def generate_narrative(
         raise ValueError(f"Child {child_id} not found in center {center_id}")
 
     # ── 1. Fetch approved events for this child on target_date ──
+    # Build a UTC datetime range for target_date in the center's local timezone.
+    # A plain `CAST(event_time AS DATE)` compares UTC dates, so an event at
+    # 10 PM ET (= 2 AM UTC next day) would be missed by a UTC date filter.
+    center_row = db.query(Center).filter(Center.id == center_id).first()
+    tz_str = (center_row.timezone if center_row else None) or "America/New_York"
+    try:
+        tz = ZoneInfo(tz_str)
+        local_midnight = datetime.combine(target_date, time.min).replace(tzinfo=tz)
+        utc_start = local_midnight.astimezone(timezone.utc)
+        utc_end = utc_start + timedelta(days=1)
+        date_filter = and_(
+            func.coalesce(Event.event_time, Event.created_at) >= utc_start,
+            func.coalesce(Event.event_time, Event.created_at) < utc_end,
+        )
+    except (ZoneInfoNotFoundError, Exception):
+        # Fallback: plain UTC date cast
+        date_filter = (cast(func.coalesce(Event.event_time, Event.created_at), Date) == target_date)
+
     events: List[Event] = (
         db.query(Event)
         .filter(
@@ -104,7 +123,7 @@ async def generate_narrative(
                 Event.child_id == child_id,
                 func.lower(Event.child_name) == func.lower(child.name),
             ),
-            cast(func.coalesce(Event.event_time, Event.created_at), Date) == target_date,
+            date_filter,
         )
         .order_by(Event.event_time.asc().nullslast(), Event.created_at.asc())
         .all()
