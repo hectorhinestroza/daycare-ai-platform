@@ -168,6 +168,7 @@ async def whatsapp_webhook(
                 center_id=center_id,
                 child_name=child_context,
                 known_children=known_names,
+                db=db,
             )
 
             # 3. Resolve child_id and Persist
