@@ -37,7 +37,13 @@ const TONE_CONFIG = {
 };
 
 function todayDateString() {
-  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  // Use local date, not UTC — parents view "today" in their timezone.
+  // toISOString() returns UTC and breaks after midnight UTC (8 PM ET),
+  // causing a mismatch with events that have event_time on the previous UTC date.
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
 function formatTime(dateStr) {
