@@ -4,12 +4,18 @@ All queries filter by center_id for multi-tenant isolation.
 """
 
 import uuid
-from datetime import date
+import logging
+import threading
+import asyncio
+from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
-from backend.storage.models import Child, ParentContact, Room, Teacher
+from backend.storage.models import Center, Child, ConsentToken, ParentContact, Room, Teacher
+from backend.services.email import send_consent_email
+
+logger = logging.getLogger(__name__)
 
 # ─── Rooms ────────────────────────────────────────────────────
 
@@ -211,12 +217,6 @@ def add_parent_contact(
 
     # Auto-trigger magic link when primary email is added to a PENDING_CONSENT child
     if child.status == "PENDING_CONSENT" and is_primary and email:
-        from datetime import datetime, timedelta, timezone
-        from backend.storage.models import Center, ConsentToken
-        import asyncio
-        import logging
-
-        logger = logging.getLogger(__name__)
 
         token_record = ConsentToken(
             id=uuid.uuid4(),
@@ -234,18 +234,18 @@ def add_parent_contact(
         center_name = center.name if center else "Your Daycare"
         child_first = child.name.split()[0] if child.name else "your child"
 
-        # Fire email asynchronously (don't block the HTTP response)
-        from backend.services.email import send_consent_email
+        # Fire email in a background thread (this handler is sync, no event loop)
 
-        asyncio.create_task(
-            send_consent_email(
+        def _send():
+            asyncio.run(send_consent_email(
                 to_email=email,
                 parent_name=name,
                 child_name=child_first,
                 center_name=center_name,
                 token=str(token_record.token),
-            )
-        )
+            ))
+
+        threading.Thread(target=_send, daemon=True).start()
 
     return contact
 

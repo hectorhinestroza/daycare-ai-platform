@@ -22,7 +22,7 @@ class Settings(BaseSettings):
 
     # Resend (transactional email)
     resend_api_key: str = ""
-    resend_from_email: str = "Raina <onboarding@raina.com>"
+    resend_from_email: str = "Raina <onboarding@raina-pilot.com>"
 
     # App base URL (used for magic links — no trailing slash)
     app_base_url: str = "http://localhost:5173"
