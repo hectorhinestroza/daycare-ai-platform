@@ -174,9 +174,18 @@ def update_child(
 
 def delete_child(db: Session, center_id: uuid.UUID, child_id: uuid.UUID) -> bool:
     """Delete a child profile and cascade delete their contacts/events (depending on DB constraints)."""
+    from backend.storage.models import ParentalConsent, PendingConsentQueue, DailyNarrative
+
     child = get_child(db, center_id, child_id)
     if not child:
         return False
+
+    # Manually delete dependent records that lack DB/ORM-level cascade deletes
+    db.query(ConsentToken).filter(ConsentToken.child_id == child_id).delete()
+    db.query(ParentalConsent).filter(ParentalConsent.child_id == child_id).delete()
+    db.query(PendingConsentQueue).filter(PendingConsentQueue.child_id == child_id).delete()
+    db.query(DailyNarrative).filter(DailyNarrative.child_id == child_id).delete()
+
     db.delete(child)
     db.commit()
     return True
