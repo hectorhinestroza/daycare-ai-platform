@@ -209,14 +209,15 @@ def add_parent_contact(
     db.commit()
     db.refresh(contact)
 
-    #Auto-trigger magic link when primary email is added to a PENDING_CONSENT child
+    # Auto-trigger magic link when primary email is added to a PENDING_CONSENT child
     if child.status == "PENDING_CONSENT" and is_primary and email:
         from datetime import datetime, timedelta, timezone
-        from backend.storage.models import ConsentToken
+        from backend.storage.models import Center, ConsentToken
+        import asyncio
         import logging
-        
+
         logger = logging.getLogger(__name__)
-        
+
         token_record = ConsentToken(
             id=uuid.uuid4(),
             center_id=center_id,
@@ -227,10 +228,24 @@ def add_parent_contact(
         )
         db.add(token_record)
         db.commit()
-        
-        # Stub the email sending for now
-        magic_link = f"https://console.raina.com/consent/{token_record.token}"
-        logger.info(f"EMAIL STUB: Sent consent magic link to {email}: {magic_link}")
+
+        # Look up center name for email personalization
+        center = db.query(Center).filter(Center.id == center_id).first()
+        center_name = center.name if center else "Your Daycare"
+        child_first = child.name.split()[0] if child.name else "your child"
+
+        # Fire email asynchronously (don't block the HTTP response)
+        from backend.services.email import send_consent_email
+
+        asyncio.create_task(
+            send_consent_email(
+                to_email=email,
+                parent_name=name,
+                child_name=child_first,
+                center_name=center_name,
+                token=str(token_record.token),
+            )
+        )
 
     return contact
 
