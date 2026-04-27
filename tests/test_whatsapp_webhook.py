@@ -103,20 +103,23 @@ class TestVoicePipeline:
 
         mock_download.return_value = (b"fake_audio_data", "audio/ogg")
         mock_transcribe.return_value = "Jason ate mac and cheese for lunch"
-        mock_extract.return_value = [
-            BaseEvent(
-                id=uuid.uuid4(),
-                center_id=str(center.id),
-                child_name="Jason",
-                event_type=EventType.FOOD,
-                confidence_score=0.95,
-                review_tier="teacher",
-                needs_director_review=False,
-                needs_review=False,
-                status=EventStatus.PENDING,
-                raw_transcript="Jason ate mac and cheese for lunch",
-            )
-        ]
+        mock_extract.return_value = (
+            [
+                BaseEvent(
+                    id=uuid.uuid4(),
+                    center_id=str(center.id),
+                    child_name="Jason",
+                    event_type=EventType.FOOD,
+                    confidence_score=0.95,
+                    review_tier="teacher",
+                    needs_director_review=False,
+                    needs_review=False,
+                    status=EventStatus.PENDING,
+                    raw_transcript="Jason ate mac and cheese for lunch",
+                )
+            ],
+            [],
+        )
 
         response = client.post(
             "/webhook/whatsapp",
@@ -143,20 +146,23 @@ class TestVoicePipeline:
         db = setup_db
         center = db.query(Center).first()
 
-        mock_extract.return_value = [
-            BaseEvent(
-                id=uuid.uuid4(),
-                center_id=str(center.id),
-                child_name="Emma",
-                event_type=EventType.POTTY,
-                confidence_score=0.9,
-                review_tier="teacher",
-                needs_director_review=False,
-                needs_review=False,
-                status=EventStatus.PENDING,
-                raw_transcript="Successful potty for Emma",
-            )
-        ]
+        mock_extract.return_value = (
+            [
+                BaseEvent(
+                    id=uuid.uuid4(),
+                    center_id=str(center.id),
+                    child_name="Emma",
+                    event_type=EventType.POTTY,
+                    confidence_score=0.9,
+                    review_tier="teacher",
+                    needs_director_review=False,
+                    needs_review=False,
+                    status=EventStatus.PENDING,
+                    raw_transcript="Successful potty for Emma",
+                )
+            ],
+            [],
+        )
 
         response = client.post(
             "/webhook/whatsapp",

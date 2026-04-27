@@ -7,7 +7,7 @@ Event types: food, nap, potty, kudos, observation, health_check,
 
 import json
 import logging
-from typing import List, Optional
+from typing import List, Optional, Tuple, Dict, Any
 from uuid import UUID, uuid4
 
 from openai import OpenAI
@@ -38,6 +38,8 @@ CRITICAL RULES:
 - Do not add events that were not mentioned. Stick to what was said.
 - If a name is unclear or ambiguous, still extract the event but set confidence_score below 0.7.
 - NEVER return an empty events array if the transcript describes activities.
+- You will be provided with a list of "Known Children in this room". If ANY child name mentioned in the transcript is NOT a perfect or obvious match for a known child on the roster, you MUST include that transcript name in the "unrecognized_names" array.
+- DO NOT hallucinate or guess unrecognized names into known names if they are completely different. Just extract the event with the said name, and flag it in unrecognized_names.
 
 CHILD VOICE INSTRUCTION (legal requirement — do not modify):
 If any child's voice is audible in this audio, treat the entire recording as 
@@ -51,14 +53,21 @@ For each distinct event mentioned, extract:
 - confidence_score: a float 0.0–1.0 indicating extraction accuracy. Set below 0.7 if the child name is unclear, event type is ambiguous, or details are vague.
 - details: a brief factual description of what was stated
 
-Return a JSON object: {"events": [...]}
+Return a JSON object with this shape:
+{
+  "unrecognized_names": ["list of child names from the transcript that are NOT in the Known Children roster"],
+  "events": [...]
+}
 
 Example — teacher says "Carlos played basketball, then had a snack and took a nap":
-{"events": [
-  {"event_type": "activity", "child_name": "Carlos", "event_time": null, "confidence_score": 0.9, "details": "Played basketball"},
-  {"event_type": "food", "child_name": "Carlos", "event_time": null, "confidence_score": 0.85, "details": "Had a snack"},
-  {"event_type": "nap", "child_name": "Carlos", "event_time": null, "confidence_score": 0.9, "details": "Took a nap"}
-]}"""
+{
+  "unrecognized_names": [],
+  "events": [
+    {"event_type": "activity", "child_name": "Carlos", "event_time": null, "confidence_score": 0.9, "details": "Played basketball"},
+    {"event_type": "food", "child_name": "Carlos", "event_time": null, "confidence_score": 0.85, "details": "Had a snack"},
+    {"event_type": "nap", "child_name": "Carlos", "event_time": null, "confidence_score": 0.9, "details": "Took a nap"}
+  ]
+}"""
 
 
 async def extract_events(
@@ -68,7 +77,7 @@ async def extract_events(
     child_name: Optional[str] = None,
     known_children: Optional[List[str]] = None,
     child_id: Optional[UUID] = None,
-) -> List[BaseEvent]:
+) -> Tuple[List[BaseEvent], List[str]]:
     """Extract structured events from a transcript using GPT-4o.
 
     Args:
@@ -80,7 +89,7 @@ async def extract_events(
         child_id:       Optional resolved child UUID for the audit log
 
     Returns:
-        List of validated BaseEvent objects
+        Tuple of (validated_events, unrecognized_names)
     """
     if not transcript.strip():
         raise ValueError("Empty transcript received")
@@ -121,8 +130,10 @@ async def extract_events(
         # 1. {"events": [...]}  — array wrapped in object
         # 2. [...]             — direct array
         # 3. {"event_type": ...} — single event as bare dict
+        unrecognized_names: List[str] = []
         if isinstance(parsed, dict) and "events" in parsed:
             raw_events = parsed["events"]
+            unrecognized_names = parsed.get("unrecognized_names", [])
         elif isinstance(parsed, list):
             raw_events = parsed
         elif isinstance(parsed, dict) and "event_type" in parsed:
@@ -165,7 +176,7 @@ async def extract_events(
                 continue
 
         logger.info(f"Extracted {len(validated_events)} valid events from {len(raw_events)} raw events")
-        return validated_events
+        return validated_events, unrecognized_names
 
     except json.JSONDecodeError as e:
         logger.error(f"GPT-4o returned invalid JSON: {e}")

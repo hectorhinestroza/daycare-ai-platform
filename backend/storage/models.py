@@ -21,8 +21,9 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    JSON,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
 from backend.storage.database import Base
@@ -194,6 +195,29 @@ class Event(Base):
     child = relationship("Child", back_populates="events")
     teacher = relationship("Teacher", back_populates="events")
     photos = relationship("Photo", back_populates="event")
+
+
+# ─── Pending Events ──────────────────────────────────────────
+
+
+class PendingEvent(Base):
+    """Holds extracted events for unrecognized children.
+
+    When a teacher replies via WhatsApp mapping the unrecognized name to an enrolled child,
+    these events are updated and moved to the main events table.
+    """
+
+    __tablename__ = "pending_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    center_id = Column(UUID(as_uuid=True), ForeignKey("centers.id"), nullable=False)
+    teacher_phone = Column(String(30), nullable=False)  # WhatsApp number to bind the session
+    unrecognized_name = Column(String(255), nullable=False)
+    original_transcript = Column(Text, nullable=False)
+    pending_event_data = Column(JSON().with_variant(JSONB, 'postgresql'), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    center = relationship("Center")
 
 
 # ─── Photos ───────────────────────────────────────────────────

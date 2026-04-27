@@ -1,6 +1,10 @@
 """WhatsApp webhook router for Twilio (Issue #1 and #4)."""
 
+import asyncio
 import logging
+import gc
+import json
+import uuid
 from typing import Dict, Optional
 
 from fastapi import APIRouter, Depends, Form, Response
@@ -15,7 +19,11 @@ from backend.storage.events_handlers import (
     get_children_by_center,
     get_teacher_by_phone,
 )
+from backend.storage.models import PendingEvent
+from backend.utils.media import delete_twilio_media
 from backend.utils.media import download_twilio_media
+from schemas.events import BaseEvent
+
 
 logger = logging.getLogger(__name__)
 
@@ -80,11 +88,15 @@ def _format_event_summary(events: list) -> str:
         name = event.child_name
         if name not in by_child:
             by_child[name] = []
-        by_child[name].append(event.event_type.value.lower().replace("_", " "))
+        by_child[name].append(
+            event.event_type.value.lower().replace("_", " ")
+        )
 
     parts = []
     for child, types in by_child.items():
-        type_summary = ", ".join(f"{types.count(t)} {t}" for t in dict.fromkeys(types))
+        type_summary = ", ".join(
+            f"{types.count(t)} {t}" for t in dict.fromkeys(types)
+        )
         parts.append(f"{child} ({type_summary})")
 
     total = len(events)
@@ -96,6 +108,58 @@ def _format_event_summary(events: list) -> str:
         msg += f"\n⚠️ {review_count} event{'s' if review_count != 1 else ''} flagged for review."
 
     return msg
+
+
+async def _process_and_persist_events(
+    db: Session,
+    teacher: any,
+    events: list,
+    unrecognized_names: list,
+    transcript: str,
+) -> Response:
+
+    recognized_events = []
+    unrecognized_events = []
+
+    for base_event in events:
+        if base_event.child_name in unrecognized_names:
+            unrecognized_events.append(base_event)
+        else:
+            recognized_events.append(base_event)
+
+    # 1. Persist valid events immediately
+    for base_event in recognized_events:
+        child = get_child_by_name(
+            db, teacher.center_id, base_event.child_name
+        )
+        child_id = child.id if child else None
+        create_event_from_base(
+            db, base_event, teacher_id=teacher.id, child_id=child_id
+        )
+
+    # 2. Persist unrecognized to pending table
+    if unrecognized_events:
+        for base_event in unrecognized_events:
+            fb = PendingEvent(
+                center_id=teacher.center_id,
+                teacher_phone=teacher.phone,
+                unrecognized_name=base_event.child_name,
+                original_transcript=transcript,
+                pending_event_data=json.loads(base_event.model_dump_json()),
+            )
+            db.add(fb)
+        db.commit()
+
+        names_str = ", ".join(unrecognized_names)
+        msg = f"⚠️ I couldn't match '{names_str}' to your roster. Reply with their enrolled name, or type 'ignore'."
+
+        if recognized_events:
+            msg = _format_event_summary(recognized_events) + "\n\n" + msg
+
+        return _build_twiml_response(msg)
+
+    # 3. All valid
+    return _build_twiml_response(_format_event_summary(recognized_events))
 
 
 @router.post("/whatsapp")
@@ -122,7 +186,9 @@ async def whatsapp_webhook(
     body = Body.strip()
     num_media = int(NumMedia)
 
-    logger.warning(f"=== INCOMING WHATSAPP ===\n  From: {phone}\n  Body: '{body}'\n  NumMedia: {num_media}")
+    logger.warning(
+        f"=== INCOMING WHATSAPP ===\n  From: {phone}\n  Body: '{body}'\n  NumMedia: {num_media}"
+    )
 
     # 1. Handle commands first (no DB lookup needed)
     if body and not num_media:
@@ -135,24 +201,81 @@ async def whatsapp_webhook(
     if not teacher:
         logger.warning(f"Unregistered phone number hit webhook: {phone}")
         # Return generic error instead of dropping so we know what happened
-        return _build_twiml_response("❌ This phone number is not registered as a teacher account.")
+        return _build_twiml_response(
+            "❌ This phone number is not registered as a teacher account."
+        )
 
     center_id = str(teacher.center_id)
     cmd_context = _get_command_context(phone)
     child_context = cmd_context.get("child_name")
 
+    # 2.5 Check Fallback Loop
+    if body and not num_media:
+
+        pending_pendings = (
+            db.query(PendingEvent).filter_by(teacher_phone=phone).all()
+        )
+        if pending_pendings:
+            if body.lower() == "ignore":
+                for fb in pending_pendings:
+                    db.delete(fb)
+                db.commit()
+                return _build_twiml_response(
+                    "✅ Ignored. Those events have been discarded."
+                )
+            else:
+                new_name = body.strip()
+                child = get_child_by_name(db, teacher.center_id, new_name)
+                child_id = child.id if child else None
+
+                events_created = 0
+                for fb in pending_pendings:
+                    raw_event = fb.pending_event_data
+                    raw_event["child_name"] = new_name
+                    raw_event["id"] = str(uuid.uuid4())
+
+                    try:
+                        base_event = BaseEvent(**raw_event)
+                        create_event_from_base(
+                            db,
+                            base_event,
+                            teacher_id=teacher.id,
+                            child_id=child_id,
+                        )
+                        events_created += 1
+                        db.delete(fb)
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to restore pending event: {e}"
+                        )
+
+                db.commit()
+                if not child_id:
+                    return _build_twiml_response(
+                        f"⚠️ Logged {events_created} event(s) for '{new_name}', but it still doesn't exactly match your roster. Director review required."
+                    )
+                return _build_twiml_response(
+                    f"✅ Got it! Logged {events_created} event(s) for {new_name}."
+                )
+
     # 3. Handle Voice Messages
-    if num_media >= 1 and MediaContentType0 and ("audio" in MediaContentType0 or "video" in MediaContentType0):
+    if (
+        num_media >= 1
+        and MediaContentType0
+        and ("audio" in MediaContentType0 or "video" in MediaContentType0)
+    ):
         try:
             # Download & Transcribe
-            audio_bytes, content_type = await download_twilio_media(MediaUrl0)
+            audio_bytes, content_type = await download_twilio_media(
+                MediaUrl0
+            )
             ext = "ogg" if "ogg" in content_type else "mp4"
-            transcript = await transcribe_audio(audio_bytes, f"voice_memo.{ext}")
+            transcript = await transcribe_audio(
+                audio_bytes, f"voice_memo.{ext}"
+            )
 
-            #Zero retention for audio — immediately delete from Twilio and clear memory
-            import gc
-            from backend.utils.media import delete_twilio_media
-            import asyncio
+            # Zero retention for audio — immediately delete from Twilio and clear memory
+
             # Fire and forget Twilio deletion
             asyncio.create_task(delete_twilio_media(MediaUrl0))
             del audio_bytes
@@ -163,7 +286,7 @@ async def whatsapp_webhook(
             known_names = [c.name for c in center_children]
 
             # 2. Extract
-            events = await extract_events(
+            events, unrecognized_names = await extract_events(
                 transcript=transcript,
                 center_id=center_id,
                 child_name=child_context,
@@ -171,18 +294,20 @@ async def whatsapp_webhook(
                 db=db,
             )
 
-            # 3. Resolve child_id and Persist
-            for base_event in events:
-                # Try to find child by name in DB to get child_id
-                child = get_child_by_name(db, teacher.center_id, base_event.child_name)
-                child_id = child.id if child else None
-                create_event_from_base(db, base_event, teacher_id=teacher.id, child_id=child_id)
-
-            return _build_twiml_response(_format_event_summary(events))
+            # 3. Route to Database
+            return await _process_and_persist_events(
+                db=db,
+                teacher=teacher,
+                events=events,
+                unrecognized_names=unrecognized_names,
+                transcript=transcript,
+            )
 
         except Exception as e:
             logger.error(f"Voice pipeline failed: {e}", exc_info=True)
-            return _build_twiml_response("❌ Sorry, I had trouble processing that voice memo. Please try again.")
+            return _build_twiml_response(
+                "❌ Sorry, I had trouble processing that voice memo. Please try again."
+            )
 
     # 4. Handle Text as a Note
     if body and not num_media:
@@ -191,26 +316,33 @@ async def whatsapp_webhook(
             center_children = get_children_by_center(db, teacher.center_id)
             known_names = [c.name for c in center_children]
 
-            events = await extract_events(
+            events, unrecognized_names = await extract_events(
                 transcript=body,
                 center_id=center_id,
                 child_name=child_context,
                 known_children=known_names,
+                db=db,
             )
 
-            # Persist to DB
-            for base_event in events:
-                child = get_child_by_name(db, teacher.center_id, base_event.child_name)
-                child_id = child.id if child else None
-                create_event_from_base(db, base_event, teacher_id=teacher.id, child_id=child_id)
-
-            return _build_twiml_response(_format_event_summary(events))
+            return await _process_and_persist_events(
+                db=db,
+                teacher=teacher,
+                events=events,
+                unrecognized_names=unrecognized_names,
+                transcript=body,
+            )
         except Exception as e:
             logger.error(f"Extraction from text failed: {e}", exc_info=True)
-            return _build_twiml_response("❌ Sorry, I had trouble processing that message. Please try again.")
+            return _build_twiml_response(
+                "❌ Sorry, I had trouble processing that message. Please try again."
+            )
 
     # 5. Handle Photos
-    if num_media >= 1 and MediaContentType0 and "image" in MediaContentType0:
+    if (
+        num_media >= 1
+        and MediaContentType0
+        and "image" in MediaContentType0
+    ):
         child_name = child_context or "Unknown"
         logger.info(f"Photo received for {child_name} from {phone}")
         msg = f"📷 Photo received for {child_name}."
@@ -219,4 +351,6 @@ async def whatsapp_webhook(
         return _build_twiml_response(msg)
 
     # 6. Fallback
-    return _build_twiml_response("👋 Hi! Send a voice memo to log events, or use /child [name] to set context.")
+    return _build_twiml_response(
+        "👋 Hi! Send a voice memo to log events, or use /child [name] to set context."
+    )

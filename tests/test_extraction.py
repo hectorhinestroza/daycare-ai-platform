@@ -38,7 +38,7 @@ class TestExtractEvents:
         )
         mock_client.chat.completions.create.return_value = mock_response
 
-        events = await extract_events(
+        events, _ = await extract_events(
             transcript="Jason ate mac and cheese for lunch",
             center_id="center_001",
             db=MagicMock(),
@@ -71,7 +71,7 @@ class TestExtractEvents:
         )
         mock_client.chat.completions.create.return_value = mock_response
 
-        events = await extract_events("Jason had lunch, napped. Emma shared toys.", "c1", db=MagicMock())
+        events, _ = await extract_events("Jason had lunch, napped. Emma shared toys.", "c1", db=MagicMock())
 
         assert len(events) == 3
         assert events[0].event_type == EventType.FOOD
@@ -97,7 +97,7 @@ class TestExtractEvents:
         )
         mock_client.chat.completions.create.return_value = mock_response
 
-        events = await extract_events("someone took a nap", "c1", db=MagicMock())
+        events, _ = await extract_events("someone took a nap", "c1", db=MagicMock())
 
         assert len(events) == 1
         assert events[0].confidence_score == 0.3
@@ -122,7 +122,7 @@ class TestExtractEvents:
         )
         mock_client.chat.completions.create.return_value = mock_response
 
-        events = await extract_events("Jason fell and scraped his knee", "c1", db=MagicMock())
+        events, _ = await extract_events("Jason fell and scraped his knee", "c1", db=MagicMock())
 
         assert len(events) == 1
         assert events[0].event_type == EventType.INCIDENT
@@ -147,7 +147,7 @@ class TestExtractEvents:
         )
         mock_client.chat.completions.create.return_value = mock_response
 
-        events = await extract_events("Gave Emma her allergy medicine at 2pm", "c1", db=MagicMock())
+        events, _ = await extract_events("Gave Emma her allergy medicine at 2pm", "c1", db=MagicMock())
 
         assert len(events) == 1
         assert events[0].event_type == EventType.MEDICATION
@@ -170,7 +170,7 @@ class TestExtractEvents:
         )
         mock_client.chat.completions.create.return_value = mock_response
 
-        events = await extract_events("Successful potty for Sarah", "c1", db=MagicMock())
+        events, _ = await extract_events("Successful potty for Sarah", "c1", db=MagicMock())
 
         assert len(events) == 1
         assert events[0].event_type == EventType.POTTY
@@ -197,7 +197,7 @@ class TestExtractEvents:
         )
         mock_client.chat.completions.create.return_value = mock_response
 
-        events = await extract_events("Emma had a temp of 99.2", "c1", db=MagicMock())
+        events, _ = await extract_events("Emma had a temp of 99.2", "c1", db=MagicMock())
 
         assert len(events) == 1
         assert events[0].event_type == EventType.HEALTH_CHECK
@@ -261,7 +261,7 @@ class TestExtractEvents:
         )
         mock_client.chat.completions.create.return_value = mock_response
 
-        events = await extract_events("test transcript", "c1", db=MagicMock())
+        events, _ = await extract_events("test transcript", "c1", db=MagicMock())
 
         assert len(events) == 1
         assert events[0].child_name == "Jason"
@@ -283,7 +283,7 @@ class TestExtractEvents:
         )
         mock_client.chat.completions.create.return_value = mock_response
 
-        events = await extract_events("Jason ate lunch", "c1", db=MagicMock())
+        events, _ = await extract_events("Jason ate lunch", "c1", db=MagicMock())
 
         assert len(events) == 1
         assert events[0].confidence_score == 0.5
