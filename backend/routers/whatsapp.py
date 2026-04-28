@@ -124,6 +124,8 @@ async def _process_and_persist_events(
     events: list,
     unrecognized_names: list,
     transcript: str,
+    phone: Optional[str] = None,
+    child_context: Optional[str] = None,
 ) -> Response:
 
     recognized_events = []
@@ -145,6 +147,15 @@ async def _process_and_persist_events(
             db, base_event, teacher_id=teacher.id, child_id=child_id
         )
 
+    # 1.5 If the transcript named a child different from the /child context,
+    # honor what was actually said and clear the stale context.
+    context_cleared_for: Optional[str] = None
+    if child_context and phone and recognized_events:
+        spoken_names = {e.child_name for e in recognized_events}
+        if all(n.lower() != child_context.lower() for n in spoken_names):
+            _command_context.get(phone, {}).pop("child_name", None)
+            context_cleared_for = ", ".join(sorted(spoken_names))
+
     # 2. Persist unrecognized to pending table
     if unrecognized_events:
         for base_event in unrecognized_events:
@@ -164,10 +175,16 @@ async def _process_and_persist_events(
         if recognized_events:
             msg = _format_event_summary(recognized_events) + "\n\n" + msg
 
+        if context_cleared_for:
+            msg += f"\n\nℹ️ Cleared /child context — transcript named {context_cleared_for}."
+
         return _build_twiml_response(msg)
 
     # 3. All valid
-    return _build_twiml_response(_format_event_summary(recognized_events))
+    msg = _format_event_summary(recognized_events)
+    if context_cleared_for:
+        msg += f"\n\nℹ️ Cleared /child context — transcript named {context_cleared_for}."
+    return _build_twiml_response(msg)
 
 
 @router.post("/whatsapp")
@@ -368,6 +385,8 @@ async def whatsapp_webhook(
                 events=events,
                 unrecognized_names=unrecognized_names,
                 transcript=transcript,
+                phone=phone,
+                child_context=child_context,
             )
 
         except Exception as e:
@@ -397,6 +416,8 @@ async def whatsapp_webhook(
                 events=events,
                 unrecognized_names=unrecognized_names,
                 transcript=body,
+                phone=phone,
+                child_context=child_context,
             )
         except Exception as e:
             logger.error(f"Extraction from text failed: {e}", exc_info=True)

@@ -99,7 +99,11 @@ async def extract_events(
 
     user_prompt = f"Transcript: {transcript}"
     if child_name:
-        user_prompt = f"Context: Events are about child named {child_name}.\n\n{user_prompt}"
+        user_prompt = (
+            f"Default child name (use ONLY if the transcript does not name a child): {child_name}. "
+            f"If the transcript explicitly names a different child, use that name instead — "
+            f"do not override what the teacher actually said.\n\n{user_prompt}"
+        )
     elif known_children:
         children_list = ", ".join(known_children)
         user_prompt = f"Known Children in this room: {children_list}\n\n{user_prompt}"
