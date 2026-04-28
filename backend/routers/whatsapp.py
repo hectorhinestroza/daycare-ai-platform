@@ -5,22 +5,32 @@ import gc
 import json
 import logging
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Dict, Optional
 
 from fastapi import APIRouter, Depends, Form, Response
 from sqlalchemy.orm import Session
 
+from backend.config import get_settings
 from backend.services.extraction import extract_events
 from backend.services.transcription import transcribe_audio
 from backend.storage.database import get_db
 from backend.storage.events_handlers import (
     create_event_from_base,
+    create_pending_photo,
+    create_photo,
+    delete_pending_photo,
     get_child_by_name,
     get_children_by_center,
+    get_pending_photos_by_teacher,
     get_teacher_by_phone,
 )
 from backend.storage.models import PendingEvent
+from backend.utils.consent_gate import get_child_for_processing
 from backend.utils.media import delete_twilio_media, download_twilio_media
+from backend.utils.photo import build_pending_s3_key, build_photo_s3_key, strip_exif
+from backend.utils.s3 import delete_photo as delete_s3_object
+from backend.utils.s3 import download_from_s3, upload_photo
 from schemas.events import BaseEvent
 
 logger = logging.getLogger(__name__)
@@ -188,17 +198,27 @@ async def whatsapp_webhook(
         f"=== INCOMING WHATSAPP ===\n  From: {phone}\n  Body: '{body}'\n  NumMedia: {num_media}"
     )
 
-    # 1. Handle commands first (no DB lookup needed)
+    # 1. Handle commands first (no DB lookup needed for parsing)
+    command_reply = None
+    is_child_command = False
     if body and not num_media:
         command_reply = _handle_command(phone, body)
-        if command_reply:
+        # /child with a valid name — don't return yet, need DB for pending photos
+        is_child_command = (
+            command_reply is not None
+            and command_reply.startswith("✅")
+            and body.strip().lower().startswith("/child")
+        )
+        if command_reply and not is_child_command:
             return _build_twiml_response(command_reply)
 
     # 2. Look up Teacher from DB
     teacher = get_teacher_by_phone(db, phone)
     if not teacher:
         logger.warning(f"Unregistered phone number hit webhook: {phone}")
-        # Return generic error instead of dropping so we know what happened
+        if command_reply:
+            # Still return command reply for unregistered users
+            return _build_twiml_response(command_reply)
         return _build_twiml_response(
             "❌ This phone number is not registered as a teacher account."
         )
@@ -206,6 +226,55 @@ async def whatsapp_webhook(
     center_id = str(teacher.center_id)
     cmd_context = _get_command_context(phone)
     child_context = cmd_context.get("child_name")
+
+    # 2.1 If /child command was just set, resolve any pending photos
+    if is_child_command and child_context:
+        reply = command_reply
+        pending = get_pending_photos_by_teacher(db, teacher.id)
+        if pending:
+            child = get_child_by_name(db, teacher.center_id, child_context)
+            if child:
+                settings = get_settings()
+                processed = 0
+                for p in pending:
+                    try:
+                        child_record = get_child_for_processing(
+                            child_id=child.id,
+                            center_id=teacher.center_id,
+                            db=db,
+                            environment=settings.environment,
+                            pipeline_stage="photo_upload",
+                        )
+                        if child_record is None:
+                            logger.warning(
+                                f"No consent for child {child.id} — discarding pending photo {p.id}"
+                            )
+                            delete_s3_object(p.s3_temp_key)
+                            delete_pending_photo(db, p.id)
+                            continue
+
+                        clean_bytes = download_from_s3(p.s3_temp_key)
+                        final_key = build_photo_s3_key(teacher.center_id, child.id)
+                        upload_photo(clean_bytes, final_key)
+                        create_photo(
+                            db,
+                            center_id=teacher.center_id,
+                            child_id=child.id,
+                            s3_key=final_key,
+                            caption=p.caption,
+                            content_type=p.content_type,
+                        )
+                        delete_s3_object(p.s3_temp_key)
+                        delete_pending_photo(db, p.id)
+                        processed += 1
+                    except Exception as e:
+                        logger.error(f"Failed to resolve pending photo {p.id}: {e}", exc_info=True)
+
+                if processed:
+                    reply += f"\n📷 {processed} photo(s) saved for {child_context}."
+            else:
+                reply += f"\n⚠️ {len(pending)} photo(s) pending — '{child_context}' not found in roster."
+        return _build_twiml_response(reply)
 
     # 2.5 Check Fallback Loop
     if body and not num_media:
@@ -341,12 +410,80 @@ async def whatsapp_webhook(
         and MediaContentType0
         and "image" in MediaContentType0
     ):
-        child_name = child_context or "Unknown"
-        logger.info(f"Photo received for {child_name} from {phone}")
-        msg = f"📷 Photo received for {child_name}."
-        if body:
-            msg += f' Caption: "{body}"'
-        return _build_twiml_response(msg)
+        try:
+            # Download from Twilio immediately
+            photo_bytes, content_type = await download_twilio_media(MediaUrl0)
+
+            # Zero retention — delete from Twilio (fire-and-forget, matches audio pattern)
+            asyncio.create_task(delete_twilio_media(MediaUrl0))
+
+            # Strip EXIF immediately — no raw metadata in S3, even temporarily
+            clean_bytes = strip_exif(photo_bytes)
+            del photo_bytes
+            gc.collect()
+
+            caption = body if body else None
+            settings = get_settings()
+
+            if child_context:
+                # Happy path: child context is set → full pipeline
+                child = get_child_by_name(db, teacher.center_id, child_context)
+                if not child:
+                    return _build_twiml_response(
+                        f"❌ Child '{child_context}' not found in roster. Photo not saved."
+                    )
+
+                child_record = get_child_for_processing(
+                    child_id=child.id,
+                    center_id=teacher.center_id,
+                    db=db,
+                    environment=settings.environment,
+                    pipeline_stage="photo_upload",
+                )
+                if child_record is None:
+                    return _build_twiml_response(
+                        f"❌ No parental consent for {child_context}. Photo not saved."
+                    )
+
+                s3_key = build_photo_s3_key(teacher.center_id, child.id)
+                upload_photo(clean_bytes, s3_key)
+                create_photo(
+                    db,
+                    center_id=teacher.center_id,
+                    child_id=child.id,
+                    s3_key=s3_key,
+                    caption=caption,
+                    content_type="image/jpeg",
+                )
+                logger.info(f"Photo saved for {child_context} (child_id={child.id})")
+                msg = f"📷 Photo saved for {child_context}."
+                if caption:
+                    msg += f' Caption: "{caption}"'
+                return _build_twiml_response(msg)
+            else:
+                # No child context → store as pending, prompt teacher
+                s3_temp_key = build_pending_s3_key(teacher.center_id, teacher.id)
+                upload_photo(clean_bytes, s3_temp_key)
+                expires_at = datetime.now(UTC) + timedelta(minutes=30)
+                create_pending_photo(
+                    db,
+                    center_id=teacher.center_id,
+                    teacher_id=teacher.id,
+                    s3_temp_key=s3_temp_key,
+                    caption=caption,
+                    content_type="image/jpeg",
+                    expires_at=expires_at,
+                )
+                logger.info(f"Photo stored as pending for teacher {teacher.id}")
+                return _build_twiml_response(
+                    "📷 Photo received! Please assign it to a child with /child [name]"
+                )
+
+        except Exception as e:
+            logger.error(f"Photo processing failed: {e}", exc_info=True)
+            return _build_twiml_response(
+                "❌ Sorry, I had trouble processing that photo. Please try again."
+            )
 
     # 6. Fallback
     return _build_twiml_response(

@@ -102,6 +102,32 @@ def generate_presigned_url(s3_key: str, expiry_seconds: int = 3600) -> Optional[
         return None
 
 
+def download_from_s3(s3_key: str) -> bytes:
+    """Download object bytes from S3.
+
+    Used to retrieve pending photos when moving them to final storage.
+
+    Raises:
+        RuntimeError: If download fails or bucket is not configured.
+    """
+    settings = get_settings()
+
+    if not settings.aws_s3_bucket:
+        raise RuntimeError("S3 bucket not configured. Set AWS_S3_BUCKET in .env")
+
+    client = _get_s3_client()
+
+    try:
+        response = client.get_object(Bucket=settings.aws_s3_bucket, Key=s3_key)
+        data = response["Body"].read()
+        logger.info(f"Downloaded from s3://{settings.aws_s3_bucket}/{s3_key} ({len(data)} bytes)")
+        return data
+
+    except ClientError as e:
+        logger.error(f"S3 download failed for {s3_key}: {e}")
+        raise RuntimeError(f"S3 download failed: {e}") from e
+
+
 def delete_photo(s3_key: str) -> bool:
     """Delete a photo from S3 (used by 90-day retention job).
 

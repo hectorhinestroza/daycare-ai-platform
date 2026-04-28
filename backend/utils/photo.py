@@ -32,6 +32,71 @@ _ACCEPTED_FORMATS = {"JPEG", "PNG"}  # HEIC handled via conversion if needed
 _MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 10MB
 
 
+def strip_exif(raw_bytes: bytes) -> bytes:
+    """Validate image format/size and strip ALL EXIF metadata.
+
+    Does NOT run the consent gate. Use this for photos that don't have a
+    child_id yet (pending photos). The consent gate runs later at
+    association time via process_incoming_photo().
+
+    Args:
+        raw_bytes: Raw photo bytes from Twilio/WhatsApp.
+
+    Returns:
+        EXIF-free JPEG bytes, ready for S3 upload.
+
+    Raises:
+        ValueError: If file exceeds 10MB or is an unsupported format.
+    """
+    # ── Step 1: File size check ─────────────────────────────────
+    if len(raw_bytes) > _MAX_FILE_SIZE_BYTES:
+        size_mb = len(raw_bytes) / (1024 * 1024)
+        raise ValueError(
+            f"Photo file too large: {size_mb:.1f}MB. Maximum allowed is 10MB."
+        )
+
+    # ── Step 2: Validate format and open image ──────────────────
+    try:
+        img = Image.open(io.BytesIO(raw_bytes))
+        img.verify()  # Check file is not corrupted
+        # Re-open after verify (verify closes the image)
+        img = Image.open(io.BytesIO(raw_bytes))
+    except Exception as e:
+        raise ValueError(
+            f"Unsupported or invalid image format. Accepted: JPEG, PNG, HEIC. Error: {e}"
+        ) from e
+
+    if img.format not in _ACCEPTED_FORMATS and img.format is not None:
+        raise ValueError(
+            f"Unsupported image format: {img.format}. Accepted: JPEG, PNG, HEIC."
+        )
+
+    # ── Step 3: Strip ALL EXIF — no exceptions, no partial strips ─
+    # Technique: copy pixel data into a brand-new image with no metadata.
+    # This is the most complete EXIF removal method — no metadata header survives.
+    img_rgb = img.convert("RGB")  # Normalize to RGB (handles RGBA, palette, etc.)
+    clean_img = Image.new("RGB", img_rgb.size)
+    # Use get_flattened_data (Pillow ≥13) — getdata() deprecated in Pillow 14
+    try:
+        clean_img.putdata(img_rgb.get_flattened_data())
+    except AttributeError:
+        # Pillow < 13 fallback
+        clean_img.putdata(list(img_rgb.getdata()))
+
+    # ── Step 4: Re-encode as JPEG without any EXIF ─────────────
+    output = io.BytesIO()
+    clean_img.save(output, format="JPEG", quality=85, exif=b"")
+    result = output.getvalue()
+
+    logger.info(
+        f"Photo EXIF stripped: "
+        f"original={len(raw_bytes)} bytes, stripped={len(result)} bytes, "
+        f"original_format={img.format}"
+    )
+
+    return result
+
+
 def process_incoming_photo(
     raw_bytes: bytes,
     child_id: UUID,
@@ -42,7 +107,7 @@ def process_incoming_photo(
     """Process a photo received from WhatsApp/Twilio.
 
     MUST be called before any photo bytes are written to storage.
-    Strips ALL EXIF, enforces consent gate, validates file type and size.
+    Runs consent gate, then delegates to strip_exif() for EXIF removal.
 
     Args:
         raw_bytes:   Raw photo bytes from Twilio/WhatsApp
@@ -73,53 +138,8 @@ def process_incoming_photo(
             f"(scope: photos). Photo rejected before processing."
         )
 
-    # ── Step 2: File size check ─────────────────────────────────
-    if len(raw_bytes) > _MAX_FILE_SIZE_BYTES:
-        size_mb = len(raw_bytes) / (1024 * 1024)
-        raise ValueError(
-            f"Photo file too large: {size_mb:.1f}MB. Maximum allowed is 10MB."
-        )
-
-    # ── Step 3: Validate format and open image ──────────────────
-    try:
-        img = Image.open(io.BytesIO(raw_bytes))
-        img.verify()  # Check file is not corrupted
-        # Re-open after verify (verify closes the image)
-        img = Image.open(io.BytesIO(raw_bytes))
-    except Exception as e:
-        raise ValueError(
-            f"Unsupported or invalid image format. Accepted: JPEG, PNG, HEIC. Error: {e}"
-        ) from e
-
-    if img.format not in _ACCEPTED_FORMATS and img.format is not None:
-        raise ValueError(
-            f"Unsupported image format: {img.format}. Accepted: JPEG, PNG, HEIC."
-        )
-
-    # ── Step 4: Strip ALL EXIF — no exceptions, no partial strips ─
-    # Technique: copy pixel data into a brand-new image with no metadata.
-    # This is the most complete EXIF removal method — no metadata header survives.
-    img_rgb = img.convert("RGB")  # Normalize to RGB (handles RGBA, palette, etc.)
-    clean_img = Image.new("RGB", img_rgb.size)
-    # Use get_flattened_data (Pillow ≥13) — getdata() deprecated in Pillow 14
-    try:
-        clean_img.putdata(img_rgb.get_flattened_data())
-    except AttributeError:
-        # Pillow < 13 fallback
-        clean_img.putdata(list(img_rgb.getdata()))
-
-    # ── Step 5: Re-encode as JPEG without any EXIF ─────────────
-    output = io.BytesIO()
-    clean_img.save(output, format="JPEG", quality=85, exif=b"")
-    result = output.getvalue()
-
-    logger.info(
-        f"Photo processed for child {child_id}: "
-        f"original={len(raw_bytes)} bytes, stripped={len(result)} bytes, "
-        f"original_format={img.format}"
-    )
-
-    return result
+    # ── Step 2: Strip EXIF (size check + format validation + pixel copy) ──
+    return strip_exif(raw_bytes)
 
 
 def build_photo_s3_key(
@@ -143,3 +163,12 @@ def build_photo_s3_key(
         target_date = date.today()
 
     return f"photos/{center_id}/{child_id}/{target_date.isoformat()}/{photo_uuid}.jpg"
+
+
+def build_pending_s3_key(center_id: UUID, teacher_id: UUID) -> str:
+    """Build S3 key for a pending (unassigned) photo.
+
+    Format: pending/{center_id}/{teacher_id}/{uuid}.jpg
+    No PII in the key — all segments are UUIDs.
+    """
+    return f"pending/{center_id}/{teacher_id}/{uuid.uuid4()}.jpg"

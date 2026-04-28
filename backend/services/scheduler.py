@@ -1,16 +1,12 @@
-"""Daily EOD narrative scheduler.
+"""Scheduler — EOD narratives + pending photo cleanup.
 
-Runs every hour at :00. For each center, checks if the center's local time
-is 5 PM on a weekday — if so, generates EOD narratives for all active children.
+Jobs:
+1. EOD narratives: Runs every hour at :00. For each center, checks if the
+   center's local time is 5 PM on a weekday — if so, generates EOD narratives.
+2. Pending photo cleanup: Runs every 10 minutes. Deletes pending photos that
+   have passed their 30-minute expiry (S3 object + DB row).
 
-This per-center approach means a center in LA gets its reports at 5 PM PT,
-not 5 PM ET, without needing a separate cron job per timezone.
-
-Rules:
-- Skips children with admin-overridden narratives (never overwrite).
-- Regenerates if a narrative already exists (picks up any late-day events).
-- Uses each center's own timezone for both the fire-time check and the date.
-- Registered once in main.py lifespan; shuts down cleanly on app exit.
+Registered once in main.py lifespan; shuts down cleanly on app exit.
 """
 
 import logging
@@ -19,11 +15,14 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 from backend.services.narrative import generate_narrative
 from backend.storage.database import SessionLocal
+from backend.storage.events_handlers import delete_pending_photo, get_expired_pending_photos
 from backend.storage.models import Center, Child
 from backend.storage.narrative_handlers import get_narrative, upsert_narrative
+from backend.utils.s3 import delete_photo as delete_s3_object
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +102,29 @@ async def _generate_all_centers() -> None:
         )
 
 
+async def _cleanup_expired_pending_photos() -> None:
+    """Delete pending photos that have passed their 30-minute expiry."""
+    db = SessionLocal()
+    cleaned = 0
+
+    try:
+        expired = get_expired_pending_photos(db)
+        for pending in expired:
+            try:
+                delete_s3_object(pending.s3_temp_key)
+            except Exception as e:
+                logger.warning(f"Failed to delete S3 object {pending.s3_temp_key}: {e}")
+            delete_pending_photo(db, pending.id)
+            cleaned += 1
+
+        if cleaned:
+            logger.info(f"Scheduler: cleaned up {cleaned} expired pending photo(s)")
+    except Exception as e:
+        logger.error(f"Scheduler: pending photo cleanup crashed: {e}", exc_info=True)
+    finally:
+        db.close()
+
+
 def start_scheduler() -> AsyncIOScheduler:
     """Create, configure, and start the async APScheduler instance.
 
@@ -121,6 +143,15 @@ def start_scheduler() -> AsyncIOScheduler:
         misfire_grace_time=3600,  # fire up to 1 hr late if server was restarting
     )
 
+    # Clean up expired pending photos every 10 minutes
+    scheduler.add_job(
+        _cleanup_expired_pending_photos,
+        IntervalTrigger(minutes=10),
+        id="pending_photo_cleanup",
+        name="Pending photo cleanup — 30-min TTL, checks every 10 min",
+        replace_existing=True,
+    )
+
     scheduler.start()
-    logger.info("Narrative scheduler started — ticks hourly, generates at 5 PM per center timezone")
+    logger.info("Scheduler started — EOD narratives (hourly) + pending photo cleanup (every 10 min)")
     return scheduler

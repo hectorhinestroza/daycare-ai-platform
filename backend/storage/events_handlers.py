@@ -11,7 +11,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from backend.storage.activity_handlers import log_activity
-from backend.storage.models import Child, Event, Teacher
+from backend.storage.models import Child, Event, PendingPhoto, Photo, Teacher
 
 # ─── Event CRUD ───────────────────────────────────────────────
 
@@ -370,3 +370,87 @@ def get_child_by_name(db: Session, center_id: uuid.UUID, name: str) -> Optional[
 
     # Ambiguous or no match — return None, let event go to director review
     return None
+
+
+# ─── Photo CRUD ──────────────────────────────────────────────
+
+
+def create_photo(
+    db: Session,
+    center_id: uuid.UUID,
+    child_id: uuid.UUID,
+    s3_key: str,
+    caption: Optional[str] = None,
+    content_type: str = "image/jpeg",
+    event_id: Optional[uuid.UUID] = None,
+) -> Photo:
+    """Create a finalized photo record (EXIF-stripped, consent-gated)."""
+    photo = Photo(
+        center_id=center_id,
+        child_id=child_id,
+        s3_key=s3_key,
+        caption=caption,
+        content_type=content_type,
+        event_id=event_id,
+    )
+    db.add(photo)
+    db.commit()
+    db.refresh(photo)
+    return photo
+
+
+# ─── Pending Photo CRUD ─────────────────────────────────────
+
+
+def create_pending_photo(
+    db: Session,
+    center_id: uuid.UUID,
+    teacher_id: uuid.UUID,
+    s3_temp_key: str,
+    caption: Optional[str] = None,
+    content_type: str = "image/jpeg",
+    expires_at: Optional[datetime] = None,
+) -> PendingPhoto:
+    """Create a pending photo record awaiting child association."""
+    pending = PendingPhoto(
+        center_id=center_id,
+        teacher_id=teacher_id,
+        s3_temp_key=s3_temp_key,
+        caption=caption,
+        content_type=content_type,
+        expires_at=expires_at,
+    )
+    db.add(pending)
+    db.commit()
+    db.refresh(pending)
+    return pending
+
+
+def get_pending_photos_by_teacher(
+    db: Session, teacher_id: uuid.UUID
+) -> List[PendingPhoto]:
+    """Get all non-expired pending photos for a teacher."""
+    return (
+        db.query(PendingPhoto)
+        .filter(
+            PendingPhoto.teacher_id == teacher_id,
+            PendingPhoto.expires_at > datetime.now(UTC),
+        )
+        .order_by(PendingPhoto.created_at)
+        .all()
+    )
+
+
+def delete_pending_photo(db: Session, pending_photo_id: uuid.UUID) -> None:
+    """Delete a pending photo record."""
+    db.query(PendingPhoto).filter(PendingPhoto.id == pending_photo_id).delete()
+    db.commit()
+
+
+def get_expired_pending_photos(db: Session) -> List[PendingPhoto]:
+    """Get all pending photos past their expiry time."""
+    return (
+        db.query(PendingPhoto)
+        .filter(PendingPhoto.expires_at <= datetime.now(UTC))
+        .all()
+    )

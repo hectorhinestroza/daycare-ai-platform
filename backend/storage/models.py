@@ -247,6 +247,33 @@ class Photo(Base):
     event = relationship("Event", back_populates="photos")
 
 
+# ─── Pending Photos ──────────────────────────────────────────
+
+
+class PendingPhoto(Base):
+    """Temporarily holds photo references before child association.
+
+    Photos are downloaded from Twilio and EXIF-stripped immediately,
+    then stored under a pending/ S3 prefix. The teacher has 30 minutes
+    to assign the photo to a child via /child [name]. Expired entries
+    are cleaned up by a scheduler job every 10 minutes.
+    """
+
+    __tablename__ = "pending_photos"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    center_id = Column(UUID(as_uuid=True), ForeignKey("centers.id"), nullable=False)
+    teacher_id = Column(UUID(as_uuid=True), ForeignKey("teachers.id"), nullable=False)
+    s3_temp_key = Column(String(500), nullable=False)
+    caption = Column(Text, nullable=True)
+    content_type = Column(String(50), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+
+    center = relationship("Center")
+    teacher = relationship("Teacher")
+
+
 # ─── Activity Log ─────────────────────────────────────────────
 
 
