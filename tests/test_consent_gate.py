@@ -9,12 +9,15 @@ Verifies:
 - HTTP 403 response structure when require_consent dependency fires
 - Dev mode bypass: gate logs warning but passes (does not raise)
 """
-
+import logging
 import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
+from fastapi import HTTPException
 
+from backend.storage.models import ConsentGateAudit, PendingConsentQueue
+from backend.utils.consent_gate import get_child_for_processing, require_consent
 
 # ─── Tests: get_child_for_processing ──────────────────────────
 
@@ -24,7 +27,6 @@ class TestGetChildForProcessing:
 
     def test_returns_child_when_active_consent_exists(self):
         """Gate must return the child object when active consent exists."""
-        from backend.utils.consent_gate import get_child_for_processing
 
         # Build a mock DB that returns a valid child from the consent view
         mock_child = MagicMock()
@@ -45,7 +47,6 @@ class TestGetChildForProcessing:
 
     def test_returns_none_when_no_consent_in_production(self):
         """In production with no consent, gate must return None."""
-        from backend.utils.consent_gate import get_child_for_processing
 
         mock_db = MagicMock()
         mock_db.execute.return_value.fetchone.return_value = None  # no row in view
@@ -61,8 +62,6 @@ class TestGetChildForProcessing:
 
     def test_audit_log_written_when_gate_blocks(self):
         """ConsentGateAudit record must be inserted when gate returns None."""
-        from backend.storage.models import ConsentGateAudit
-        from backend.utils.consent_gate import get_child_for_processing
 
         mock_db = MagicMock()
         mock_db.execute.return_value.fetchone.return_value = None
@@ -88,8 +87,6 @@ class TestGetChildForProcessing:
 
     def test_pending_queue_written_when_gate_blocks(self):
         """PendingConsentQueue entry must be inserted when gate blocks."""
-        from backend.storage.models import PendingConsentQueue
-        from backend.utils.consent_gate import get_child_for_processing
 
         mock_db = MagicMock()
         mock_db.execute.return_value.fetchone.return_value = None
@@ -119,7 +116,6 @@ class TestGetChildForProcessing:
 
     def test_dev_bypass_returns_child_without_consent(self):
         """In development mode, gate must return the child even without consent record."""
-        from backend.utils.consent_gate import get_child_for_processing
 
         mock_db = MagicMock()
         # Simulates no consent record in view — but also needs child lookup fallback
@@ -141,8 +137,6 @@ class TestGetChildForProcessing:
 
     def test_dev_bypass_logs_warning(self, caplog):
         """Dev bypass must emit a WARNING log — never silently skip enforcement."""
-        import logging
-        from backend.utils.consent_gate import get_child_for_processing
 
         mock_child = MagicMock()
         mock_db = MagicMock()
@@ -170,9 +164,6 @@ class TestRequireConsentDependency:
 
     def test_403_response_structure(self):
         """HTTP 403 body must have error, child_id, scope, message fields."""
-        from fastapi import HTTPException
-        from unittest.mock import patch
-        from backend.utils.consent_gate import require_consent
 
         dep = require_consent(scope="audio_processing")
 

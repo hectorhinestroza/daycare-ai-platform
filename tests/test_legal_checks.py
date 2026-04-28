@@ -6,9 +6,10 @@ Verifies:
 - Returns dict with correct keys
 - Application starts regardless of env var state (no startup blocker)
 """
-
 import os
 from unittest.mock import patch
+
+from backend.startup.legal_checks import get_legal_status_fields
 
 
 class TestGetLegalStatusFields:
@@ -16,7 +17,6 @@ class TestGetLegalStatusFields:
 
     def test_all_true_when_all_confirmed(self):
         """All three fields True when env vars set to 'confirmed'."""
-        from backend.startup.legal_checks import get_legal_status_fields
 
         env = {
             "DPA_OPENAI_CONFIRMED": "confirmed",
@@ -32,7 +32,6 @@ class TestGetLegalStatusFields:
 
     def test_false_when_openai_dpa_missing(self):
         """openai_dpa_confirmed is False when DPA_OPENAI_CONFIRMED not set."""
-        from backend.startup.legal_checks import get_legal_status_fields
 
         env = {
             "DPA_TWILIO_CONFIRMED": "confirmed",
@@ -47,7 +46,6 @@ class TestGetLegalStatusFields:
 
     def test_false_when_value_not_confirmed(self):
         """False if env var is set but not exactly 'confirmed' (e.g. 'yes', 'true')."""
-        from backend.startup.legal_checks import get_legal_status_fields
 
         for wrong_value in ["yes", "true", "1", "TRUE", "Confirmed", ""]:
             env = {"DPA_OPENAI_CONFIRMED": wrong_value}
@@ -58,7 +56,6 @@ class TestGetLegalStatusFields:
 
     def test_returns_all_required_keys(self):
         """Dict must have exactly the three documented keys."""
-        from backend.startup.legal_checks import get_legal_status_fields
 
         status = get_legal_status_fields()
         required_keys = {
@@ -70,7 +67,6 @@ class TestGetLegalStatusFields:
 
     def test_all_false_when_no_vars_set(self):
         """All False when no env vars are set — reminder not a blocker."""
-        from backend.startup.legal_checks import get_legal_status_fields
 
         # Remove all three vars
         clean_env = {k: v for k, v in os.environ.items()
@@ -87,7 +83,6 @@ class TestGetLegalStatusFields:
 
     def test_no_exception_raised_when_vars_missing(self):
         """Missing env vars must NEVER raise — this is observability, not enforcement."""
-        from backend.startup.legal_checks import get_legal_status_fields
 
         clean_env = {}
         with patch.dict(os.environ, clean_env, clear=True):

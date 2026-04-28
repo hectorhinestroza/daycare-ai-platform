@@ -9,7 +9,8 @@ Endpoints:
 
 import json
 import logging
-from datetime import date as date_type, datetime, timezone
+from datetime import date as date_type
+from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID
 

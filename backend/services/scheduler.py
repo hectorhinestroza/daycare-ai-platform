@@ -20,10 +20,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from backend.services.narrative import generate_narrative
 from backend.storage.database import SessionLocal
 from backend.storage.models import Center, Child
 from backend.storage.narrative_handlers import get_narrative, upsert_narrative
-from backend.services.narrative import generate_narrative
 
 logger = logging.getLogger(__name__)
 

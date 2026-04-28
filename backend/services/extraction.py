@@ -7,7 +7,7 @@ Event types: food, nap, potty, kudos, observation, health_check,
 
 import json
 import logging
-from typing import List, Optional, Tuple, Dict, Any
+from typing import List, Optional, Tuple
 from uuid import UUID, uuid4
 
 from openai import OpenAI

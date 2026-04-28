@@ -1,4 +1,5 @@
 """Utility for downloading media files from Twilio."""
+import logging
 
 import httpx
 
@@ -29,7 +30,6 @@ async def delete_twilio_media(media_url: str) -> None:
     Errors are swallowed and logged, as deletion failures should not
     crash the main webhook pipeline.
     """
-    import logging
     logger = logging.getLogger(__name__)
     
     settings = get_settings()

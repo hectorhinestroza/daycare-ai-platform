@@ -10,7 +10,6 @@ Rules:
 
 Legal reference: legal_prd_v1.md §5.3 + legal_agent_prompt.md Rules 1, 4, the Legal PRD issue 2
 """
-
 import logging
 from typing import Callable, Optional
 from uuid import UUID
@@ -21,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from backend.config import get_settings
 from backend.storage.database import get_db
+from backend.storage.models import ConsentGateAudit, PendingConsentQueue
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,6 @@ def get_child_for_processing(
     Returns:
         Child row if consent exists (or dev bypass active), None otherwise.
     """
-    from backend.storage.models import ConsentGateAudit, PendingConsentQueue
 
     is_production = environment.lower() == "production"
 
@@ -115,7 +114,6 @@ def _log_gate_block(
     raw_event_ref: Optional[str],
 ) -> None:
     """Write audit log and pending queue entry for a consent gate block."""
-    from backend.storage.models import ConsentGateAudit, PendingConsentQueue
 
     try:
         # Append-only audit log

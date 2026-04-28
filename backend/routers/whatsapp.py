@@ -1,9 +1,9 @@
 """WhatsApp webhook router for Twilio (Issue #1 and #4)."""
 
 import asyncio
-import logging
 import gc
 import json
+import logging
 import uuid
 from typing import Dict, Optional
 
@@ -20,10 +20,8 @@ from backend.storage.events_handlers import (
     get_teacher_by_phone,
 )
 from backend.storage.models import PendingEvent
-from backend.utils.media import delete_twilio_media
-from backend.utils.media import download_twilio_media
+from backend.utils.media import delete_twilio_media, download_twilio_media
 from schemas.events import BaseEvent
-
 
 logger = logging.getLogger(__name__)
 

@@ -10,7 +10,6 @@ Endpoints:
     POST /api/events/{center_id}/{event_id}/reject  — reject event
     PATCH /api/events/{center_id}/{event_id}        — inline edit
 """
-
 import logging
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -21,7 +20,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from backend.storage.database import get_db, SessionLocal
+from backend.services.narrative import generate_narrative
+from backend.storage.database import SessionLocal, get_db
 from backend.storage.events_handlers import (
     approve_event,
     batch_approve_events,
@@ -34,6 +34,8 @@ from backend.storage.events_handlers import (
     reject_event,
     update_event,
 )
+from backend.storage.models import Center as CenterModel
+from backend.storage.narrative_handlers import get_narrative, upsert_narrative
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +64,6 @@ async def _refresh_narrative_if_exists(center_id: UUID, child_id: UUID, event_da
     (e.g. 10:50 PM ET) have event_time in UTC on the *next* UTC calendar day, but the
     narrative lives on the *local* calendar date.
     """
-    from backend.services.narrative import generate_narrative
-    from backend.storage.narrative_handlers import get_narrative, upsert_narrative
-    from backend.storage.models import Center as CenterModel
 
     now = datetime.now(timezone.utc)
 

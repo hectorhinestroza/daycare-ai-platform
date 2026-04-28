@@ -6,11 +6,10 @@ Verifies:
 - Errors during deletion do not crash the pipeline
 """
 
-import gc
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 import httpx
+import pytest
 
 from backend.utils.media import delete_twilio_media
 

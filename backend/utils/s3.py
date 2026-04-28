@@ -8,7 +8,6 @@ Key format: photos/{center_id}/{child_id}/{date}/{uuid}.jpg
 
 import logging
 from typing import Optional
-from uuid import UUID
 
 import boto3
 from botocore.exceptions import ClientError

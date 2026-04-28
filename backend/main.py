@@ -1,3 +1,4 @@
+
 import logging
 from contextlib import asynccontextmanager
 from typing import Dict
@@ -5,6 +6,8 @@ from typing import Dict
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+import backend.storage.models  # noqa: F401 — register all models with Base
 
 # Configure structured logging
 logging.basicConfig(
@@ -22,11 +25,11 @@ from backend.middleware import (
     RequestTimingMiddleware,
 )
 from backend.routers.activity import router as activity_router
+from backend.routers.consent import router as consent_router
 from backend.routers.events import router as events_router
 from backend.routers.narratives import router as narratives_router
 from backend.routers.onboarding import router as onboarding_router
 from backend.routers.whatsapp import router as whatsapp_router
-from backend.routers.consent import router as consent_router
 from backend.services.scheduler import start_scheduler
 from backend.startup.legal_checks import get_legal_status_fields
 from backend.storage.database import Base, engine
@@ -35,7 +38,6 @@ from backend.storage.database import Base, engine
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Create DB tables on startup (dev mode). Alembic handles prod migrations."""
-    import backend.storage.models  # noqa: F401 — register all models with Base
 
     Base.metadata.create_all(bind=engine)
     logger.info("Database tables created / verified")

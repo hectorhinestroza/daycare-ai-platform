@@ -8,12 +8,13 @@ Verifies:
 - No UPDATE path exists for parental_consent (enforcement test)
 - Pydantic schemas validate correctly
 """
-
 import uuid
-from datetime import datetime, timezone
 
 import pytest
+from pydantic import ValidationError
 
+from backend.storage.models import ConsentGateAudit, ParentalConsent, PendingConsentQueue
+from schemas.consent import ConsentCreate, ConsentWithdraw
 
 # ─── Pydantic Schema Tests ─────────────────────────────────────
 
@@ -23,7 +24,6 @@ class TestConsentSchemas:
 
     def test_consent_create_validates_required_fields(self):
         """ConsentCreate requires center_id, child_id, parent_id, and consent flags."""
-        from schemas.consent import ConsentCreate
 
         parent_id = uuid.uuid4()
         data = ConsentCreate(
@@ -42,7 +42,6 @@ class TestConsentSchemas:
 
     def test_consent_ai_training_defaults_false(self):
         """consent_ai_training must default to False and not be settable to True in V1."""
-        from schemas.consent import ConsentCreate
 
         data = ConsentCreate(
             center_id=uuid.uuid4(),
@@ -60,7 +59,6 @@ class TestConsentSchemas:
 
     def test_consent_method_enum_valid_values(self):
         """consent_method accepts only: paper_scan, docusign, email_confirm."""
-        from schemas.consent import ConsentCreate, ConsentMethod
 
         for method in ["paper_scan", "docusign", "email_confirm"]:
             data = ConsentCreate(
@@ -78,8 +76,6 @@ class TestConsentSchemas:
 
     def test_consent_method_rejects_invalid_value(self):
         """consent_method rejects anything not in the enum."""
-        from pydantic import ValidationError
-        from schemas.consent import ConsentCreate
 
         with pytest.raises(ValidationError):
             ConsentCreate(
@@ -96,7 +92,6 @@ class TestConsentSchemas:
 
     def test_consent_withdraw_schema(self):
         """ConsentWithdraw requires only the consent_id."""
-        from schemas.consent import ConsentWithdraw
 
         data = ConsentWithdraw(reason="Parent request")
         assert data.reason == "Parent request"
@@ -110,7 +105,6 @@ class TestParentalConsentModel:
 
     def test_model_has_all_required_columns(self):
         """Verify all columns from legal_prd_v1.md §5.2 are present."""
-        from backend.storage.models import ParentalConsent
 
         required = {
             "id",
@@ -135,7 +129,6 @@ class TestParentalConsentModel:
 
     def test_consent_ai_training_default_false(self):
         """consent_ai_training column default must be False."""
-        from backend.storage.models import ParentalConsent
 
         col = ParentalConsent.__table__.columns["consent_ai_training"]
         # SQLAlchemy column default
@@ -143,14 +136,12 @@ class TestParentalConsentModel:
 
     def test_is_active_default_true(self):
         """is_active column default must be True."""
-        from backend.storage.models import ParentalConsent
 
         col = ParentalConsent.__table__.columns["is_active"]
         assert col.default.arg is True
 
     def test_no_update_path_comment_present(self):
         """Verify the ORM model has the no-update docstring as a compliance marker."""
-        from backend.storage.models import ParentalConsent
 
         # The docstring must mention immutability to signal to future devs
         assert ParentalConsent.__doc__ is not None
@@ -163,7 +154,6 @@ class TestPendingConsentQueueModel:
 
     def test_model_exists_with_required_fields(self):
         """PendingConsentQueue must exist with child_id, center_id, blocked_at."""
-        from backend.storage.models import PendingConsentQueue
 
         required = {"id", "child_id", "center_id", "blocked_at"}
         model_columns = {col.name for col in PendingConsentQueue.__table__.columns}
@@ -176,7 +166,6 @@ class TestConsentGateAuditModel:
 
     def test_model_exists_with_required_fields(self):
         """ConsentGateAudit must exist with child_id, center_id, pipeline_stage, timestamp."""
-        from backend.storage.models import ConsentGateAudit
 
         required = {"id", "child_id", "center_id", "pipeline_stage", "timestamp"}
         model_columns = {col.name for col in ConsentGateAudit.__table__.columns}

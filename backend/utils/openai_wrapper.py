@@ -14,13 +14,14 @@ What it NEVER does:
 
 Legal reference: legal_prd_v1.md §7.2 + legal_agent_prompt.md Rule 6
 """
-
 import logging
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
 from sqlalchemy.orm import Session
+
+from backend.storage.models import AiApiLog
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,6 @@ def call_openai_with_logging(
     Raises:
         Any exception from the OpenAI client propagates unchanged.
     """
-    from backend.storage.models import AiApiLog
 
     model = openai_kwargs.get("model", "unknown")
 
@@ -104,7 +104,6 @@ async def call_openai_async_with_logging(
 
     See call_openai_with_logging() for full documentation.
     """
-    from backend.storage.models import AiApiLog
 
     model = openai_kwargs.get("model", "unknown")
 

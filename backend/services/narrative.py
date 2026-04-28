@@ -12,16 +12,17 @@ Edge cases handled:
 import json
 import logging
 import uuid
-from datetime import date as date_type, datetime, time, timedelta, timezone
-from typing import List, Optional
+from datetime import date as date_type
+from datetime import datetime, time, timedelta, timezone
+from typing import List
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from openai import AsyncOpenAI
-from sqlalchemy import and_, cast, Date, func, or_
+from sqlalchemy import Date, and_, cast, func, or_
 from sqlalchemy.orm import Session
 
 from backend.config import get_settings
-from backend.storage.models import Center, Child, Event, Photo
+from backend.storage.models import Center, Child, Event
 from backend.utils.openai_wrapper import call_openai_async_with_logging
 
 logger = logging.getLogger(__name__)

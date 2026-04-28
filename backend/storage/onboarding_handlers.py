@@ -2,18 +2,27 @@
 
 All queries filter by center_id for multi-tenant isolation.
 """
-
-import uuid
+import asyncio
 import logging
 import threading
-import asyncio
+import uuid
 from datetime import date, datetime, timedelta, timezone
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
-from backend.storage.models import Center, Child, ConsentToken, ParentContact, Room, Teacher
 from backend.services.email import send_consent_email
+from backend.storage.models import (
+    Center,
+    Child,
+    ConsentToken,
+    DailyNarrative,
+    ParentalConsent,
+    ParentContact,
+    PendingConsentQueue,
+    Room,
+    Teacher,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +183,6 @@ def update_child(
 
 def delete_child(db: Session, center_id: uuid.UUID, child_id: uuid.UUID) -> bool:
     """Delete a child profile and cascade delete their contacts/events (depending on DB constraints)."""
-    from backend.storage.models import ParentalConsent, PendingConsentQueue, DailyNarrative
 
     child = get_child(db, center_id, child_id)
     if not child:

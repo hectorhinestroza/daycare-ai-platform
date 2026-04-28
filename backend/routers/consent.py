@@ -6,7 +6,6 @@ They rely securely on the UUID magic link token.
 
 import logging
 from datetime import datetime, timezone
-from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -14,7 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.storage.database import get_db
-from backend.storage.models import Child, Center, ConsentToken, ParentalConsent
+from backend.storage.models import ConsentToken, ParentalConsent
 
 logger = logging.getLogger(__name__)
 

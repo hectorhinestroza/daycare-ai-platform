@@ -10,6 +10,7 @@ import uuid
 from datetime import date, datetime, timezone
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     Column,
     Date,
@@ -21,7 +22,6 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
-    JSON,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship

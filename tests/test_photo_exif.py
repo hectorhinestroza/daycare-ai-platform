@@ -9,22 +9,23 @@ Verifies:
 - File > 10MB → raises ValueError
 - Returned bytes are valid JPEG
 """
-
 import io
-import struct
+import re
 import uuid
 from unittest.mock import MagicMock, patch
 
+import piexif
 import pytest
+from PIL import Image
 
+from backend.utils.consent_gate import ConsentGateException
+from backend.utils.photo import build_photo_s3_key, process_incoming_photo
 
 # ─── EXIF test image helpers ──────────────────────────────────
 
 
 def _make_jpeg_with_gps_exif() -> bytes:
     """Create a minimal JPEG with GPS EXIF metadata using Pillow."""
-    from PIL import Image
-    import piexif
 
     # Create a tiny red image
     img = Image.new("RGB", (10, 10), color=(255, 0, 0))
@@ -51,7 +52,6 @@ def _make_jpeg_with_gps_exif() -> bytes:
 
 def _make_plain_jpeg() -> bytes:
     """Create a minimal JPEG with no EXIF."""
-    from PIL import Image
 
     img = Image.new("RGB", (10, 10), color=(0, 255, 0))
     output = io.BytesIO()
@@ -61,7 +61,6 @@ def _make_plain_jpeg() -> bytes:
 
 def _make_png() -> bytes:
     """Create a minimal PNG."""
-    from PIL import Image
 
     img = Image.new("RGB", (10, 10), color=(0, 0, 255))
     output = io.BytesIO()
@@ -83,7 +82,6 @@ class TestProcessIncomingPhotoExif:
 
     def test_strips_gps_exif_from_jpeg(self):
         """GPS EXIF must be completely absent from the output bytes."""
-        from backend.utils.photo import process_incoming_photo
 
         raw_bytes = _make_jpeg_with_gps_exif()
         # Confirm our test image actually has EXIF before stripping
@@ -104,7 +102,6 @@ class TestProcessIncomingPhotoExif:
 
     def test_strips_device_metadata(self):
         """Device make/model EXIF must be absent from output."""
-        from backend.utils.photo import process_incoming_photo
 
         raw_bytes = _make_jpeg_with_gps_exif()
 
@@ -124,8 +121,6 @@ class TestProcessIncomingPhotoExif:
 
     def test_output_is_valid_jpeg(self):
         """Stripped output must be a valid JPEG (decodable by Pillow)."""
-        from PIL import Image
-        from backend.utils.photo import process_incoming_photo
 
         raw_bytes = _make_jpeg_with_gps_exif()
         mock_db = MagicMock()
@@ -145,7 +140,6 @@ class TestProcessIncomingPhotoExif:
 
     def test_accepts_png_input(self):
         """PNG input must be accepted and converted to EXIF-free JPEG."""
-        from backend.utils.photo import process_incoming_photo
 
         raw_bytes = _make_png()
         mock_db = MagicMock()
@@ -168,8 +162,6 @@ class TestProcessIncomingPhotoConsentGate:
 
     def test_raises_consent_gate_exception_when_no_consent_in_production(self):
         """ConsentGateException raised before any S3 write when gate blocks."""
-        from backend.utils.photo import process_incoming_photo
-        from backend.utils.consent_gate import ConsentGateException
 
         raw_bytes = _make_plain_jpeg()
         mock_db = MagicMock()
@@ -187,8 +179,6 @@ class TestProcessIncomingPhotoConsentGate:
 
     def test_consent_check_happens_before_image_decode(self):
         """Consent gate must be called first — before Pillow processes anything."""
-        from backend.utils.photo import process_incoming_photo
-        from backend.utils.consent_gate import ConsentGateException
 
         # Invalid bytes — if consent gate fires first, we get ConsentGateException
         # If consent gate fires after decode, we'd get a different error
@@ -211,7 +201,6 @@ class TestProcessIncomingPhotoValidation:
 
     def test_rejects_file_over_10mb(self):
         """Files larger than 10MB must be rejected with ValueError."""
-        from backend.utils.photo import process_incoming_photo
 
         # 11MB of fake data
         big_bytes = b"x" * (11 * 1024 * 1024)
@@ -229,7 +218,6 @@ class TestProcessIncomingPhotoValidation:
 
     def test_rejects_invalid_file_type(self):
         """Non-image files must be rejected with ValueError."""
-        from backend.utils.photo import process_incoming_photo
 
         # Fake PDF header
         pdf_bytes = b"%PDF-1.4 fake content"
@@ -251,7 +239,6 @@ class TestS3KeyFormat:
 
     def test_s3_key_contains_no_child_name(self):
         """S3 key must use UUID format only — no child name, no parent name."""
-        from backend.utils.photo import build_photo_s3_key
 
         child_id = uuid.uuid4()
         center_id = uuid.uuid4()
@@ -268,8 +255,6 @@ class TestS3KeyFormat:
 
     def test_s3_key_format_is_correct(self):
         """S3 key must be: photos/{center_id}/{child_id}/{date}/{uuid}.jpg"""
-        from backend.utils.photo import build_photo_s3_key
-        import re
 
         child_id = uuid.uuid4()
         center_id = uuid.uuid4()

@@ -6,11 +6,13 @@ Verifies:
 - Token counts are captured from the response usage object
 - child_id / center_id / pipeline_stage are recorded correctly
 """
-
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
+
+from backend.storage.models import AiApiLog
+from backend.utils.openai_wrapper import call_openai_with_logging
 
 # ─── Fixtures ─────────────────────────────────────────────────
 
@@ -45,7 +47,6 @@ class TestCallOpenaiWithLogging:
 
     def test_returns_response_unchanged(self, center_id, child_id):
         """Wrapper must return the raw OpenAI response transparently."""
-        from backend.utils.openai_wrapper import call_openai_with_logging
 
         mock_client = MagicMock()
         mock_response = _make_mock_response()
@@ -68,7 +69,6 @@ class TestCallOpenaiWithLogging:
 
     def test_log_record_written_to_db(self, center_id, child_id):
         """A log record must be inserted into the db session after every call."""
-        from backend.utils.openai_wrapper import call_openai_with_logging
 
         mock_client = MagicMock()
         mock_client.chat.completions.create.return_value = _make_mock_response(80, 40)
@@ -92,8 +92,6 @@ class TestCallOpenaiWithLogging:
 
     def test_log_record_has_correct_fields(self, center_id, child_id):
         """Log record must have model, center_id, child_id, stage, token counts."""
-        from backend.storage.models import AiApiLog
-        from backend.utils.openai_wrapper import call_openai_with_logging
 
         mock_client = MagicMock()
         mock_client.chat.completions.create.return_value = _make_mock_response(75, 30)
@@ -129,8 +127,6 @@ class TestCallOpenaiWithLogging:
 
     def test_log_record_contains_no_prompt_content(self, center_id, child_id):
         """CRITICAL: Log record must NOT contain prompt text or response content."""
-        from backend.storage.models import AiApiLog
-        from backend.utils.openai_wrapper import call_openai_with_logging
 
         secret_prompt = "Child: Maria Santos, DOB: 2021-03-12"
         secret_response = '{"headline": "Maria had a great day!", "body": "Sensitive info here"}'
@@ -180,8 +176,6 @@ class TestCallOpenaiWithLogging:
 
     def test_token_counts_from_usage_object(self, center_id, child_id):
         """Token counts must come from response.usage, not hardcoded."""
-        from backend.storage.models import AiApiLog
-        from backend.utils.openai_wrapper import call_openai_with_logging
 
         mock_client = MagicMock()
         mock_client.chat.completions.create.return_value = _make_mock_response(
@@ -214,7 +208,6 @@ class TestCallOpenaiWithLogging:
 
     def test_child_id_can_be_none(self, center_id):
         """child_id is optional — some pipeline stages don't have it yet."""
-        from backend.utils.openai_wrapper import call_openai_with_logging
 
         mock_client = MagicMock()
         mock_client.chat.completions.create.return_value = _make_mock_response()
@@ -243,7 +236,6 @@ class TestAiApiLogModel:
 
     def test_model_has_required_fields(self):
         """AiApiLog must expose all legally required fields."""
-        from backend.storage.models import AiApiLog
 
         required_fields = {
             "id",
@@ -262,7 +254,6 @@ class TestAiApiLogModel:
 
     def test_model_has_no_prompt_column(self):
         """AiApiLog must NOT have a prompt or response column (by design)."""
-        from backend.storage.models import AiApiLog
 
         prohibited = {"prompt", "response", "prompt_text", "response_text", "content"}
         model_columns = {col.name for col in AiApiLog.__table__.columns}

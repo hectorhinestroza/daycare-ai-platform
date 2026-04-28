@@ -3,11 +3,11 @@
 All queries filter by center_id for multi-tenant isolation.
 This is the data access layer — never bypass it with raw SQL.
 """
-
 import uuid
 from datetime import UTC, datetime
 from typing import List, Optional
 
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from backend.storage.activity_handlers import log_activity
@@ -242,7 +242,6 @@ def get_approved_events_for_child(
     Matches on child_id OR child_name (case-insensitive) to handle events
     where child_id was not resolved at extraction time.
     """
-    from sqlalchemy import or_, func
 
     child = db.query(Child).filter(Child.id == child_id, Child.center_id == center_id).first()
     if not child:
