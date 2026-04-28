@@ -29,6 +29,7 @@ from backend.routers.consent import router as consent_router
 from backend.routers.events import router as events_router
 from backend.routers.narratives import router as narratives_router
 from backend.routers.onboarding import router as onboarding_router
+from backend.routers.photos import router as photos_router
 from backend.routers.whatsapp import router as whatsapp_router
 from backend.services.scheduler import start_scheduler
 from backend.startup.legal_checks import get_legal_status_fields
@@ -73,6 +74,7 @@ app.include_router(consent_router)
 app.include_router(events_router)
 app.include_router(narratives_router)
 app.include_router(onboarding_router)
+app.include_router(photos_router)
 app.include_router(whatsapp_router)
 
 

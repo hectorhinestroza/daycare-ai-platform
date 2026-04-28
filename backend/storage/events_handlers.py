@@ -399,6 +399,26 @@ def create_photo(
     return photo
 
 
+def get_photos_for_child(
+    db: Session,
+    center_id: uuid.UUID,
+    child_id: uuid.UUID,
+    limit: int = 50,
+) -> List[Photo]:
+    """Return non-deleted photos for a child, newest first."""
+    return (
+        db.query(Photo)
+        .filter(
+            Photo.center_id == center_id,
+            Photo.child_id == child_id,
+            Photo.deleted_at.is_(None),
+        )
+        .order_by(Photo.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+
 # ─── Pending Photo CRUD ─────────────────────────────────────
 
 

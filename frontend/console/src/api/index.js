@@ -113,6 +113,14 @@ export async function fetchChildPublic(centerId, childId) {
   return res.json();
 }
 
+export async function fetchChildPhotos(centerId, childId, { limit = 50 } = {}) {
+  const params = new URLSearchParams();
+  params.set('limit', String(limit));
+  const res = await fetch(`${API_BASE}/api/photos/feed/${centerId}/${childId}?${params}`);
+  if (!res.ok) throw new Error(`Failed to fetch photos: ${res.status}`);
+  return res.json();
+}
+
 // ─── Onboarding: Rooms ──────────────────────────────────────
 
 export async function fetchRooms(centerId) {

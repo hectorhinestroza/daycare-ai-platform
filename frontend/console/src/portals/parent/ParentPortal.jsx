@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { fetchParentFeed, fetchChildPublic, fetchNarrative, generateNarrative } from '../../api/index';
+import { fetchParentFeed, fetchChildPublic, fetchChildPhotos, fetchNarrative, generateNarrative } from '../../api/index';
 import { fromApi } from '../../utils/time';
 
 const EVENT_ICON = {
@@ -82,6 +82,7 @@ function groupByDate(events) {
 export default function ParentPortal({ centerId, childId }) {
   const [child, setChild] = useState(null);
   const [events, setEvents] = useState([]);
+  const [photos, setPhotos] = useState([]);
   const [narrative, setNarrative] = useState(null);
   const [generating, setGenerating] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -107,14 +108,16 @@ export default function ParentPortal({ centerId, childId }) {
   const loadData = useCallback(async () => {
     try {
       const today = todayDateString();
-      const [childData, feedData, narrativeData] = await Promise.all([
+      const [childData, feedData, narrativeData, photosData] = await Promise.all([
         fetchChildPublic(centerId, childId),
         fetchParentFeed(centerId, childId),
         fetchNarrative(centerId, childId, today),
+        fetchChildPhotos(centerId, childId),
       ]);
       setChild(childData);
       setEvents(feedData);
       setNarrative(narrativeData);
+      setPhotos(photosData);
       setError(null);
 
       // Auto-trigger once per session when events exist but no narrative yet
@@ -219,8 +222,8 @@ export default function ParentPortal({ centerId, childId }) {
                   <DailySummary events={group.events} childName={child?.name} />
                 ) : null}
 
-                {/* Photo gallery for today if photos exist */}
-                {idx === 0 && <PhotoGallery events={group.events} narrative={narrative} />}
+                {/* Captured Moments — today's photos */}
+                {idx === 0 && <PhotoGallery photos={photos} narrative={narrative} />}
 
                 {/* Timeline */}
                 <div className="space-y-3">
@@ -316,46 +319,45 @@ function EODNarrativeCard({ narrative }) {
   );
 }
 
-// ─── Photo gallery ─────────────────────────────────────────
+// ─── Captured Moments — vertical photo cards (per Stitch mock) ───
 
-function PhotoGallery({ events, narrative }) {
+function PhotoGallery({ photos, narrative }) {
   const photoCaptions = narrative?.photo_captions || {};
 
-  // Collect photos with captions from narrative, or any event photos
-  const photos = [];
-  for (const event of events) {
-    if (!event.photos) continue;
-    for (const photo of event.photos) {
-      if (photo.s3_url || photo.s3_key) {
-        photos.push({
-          id: photo.id,
-          url: photo.s3_url,
-          caption: photoCaptions[photo.id] || photo.caption || null,
-        });
-      }
-    }
-  }
+  const today = new Date().toDateString();
+  const todays = (photos || []).filter((p) => {
+    const created = fromApi(p.created_at);
+    return created && created.toDateString() === today && p.s3_url;
+  });
 
-  if (photos.length === 0) return null;
+  if (todays.length === 0) return null;
 
   return (
-    <div className="mb-5">
-      <p className="text-xs font-medium text-on-surface-variant uppercase tracking-wider mb-2">Photos</p>
-      <div className="flex gap-3 overflow-x-auto pb-2 -mx-1 px-1">
-        {photos.map((photo) => (
-          <div key={photo.id} className="shrink-0 w-40">
-            <div className="w-40 h-40 rounded-lg overflow-hidden bg-surface-container">
-              <img src={photo.url} alt={photo.caption || 'Photo'} className="w-full h-full object-cover" />
-            </div>
-            {photo.caption && (
-              <p className="text-xs text-on-surface-variant mt-1.5 leading-snug line-clamp-2">
-                {photo.caption}
-              </p>
-            )}
-          </div>
-        ))}
+    <section className="mb-8">
+      <h2 className="font-headline text-lg text-on-surface mb-4">Captured Moments</h2>
+      <div className="space-y-6">
+        {todays.map((photo) => {
+          const caption = photoCaptions[photo.id] || photo.caption || null;
+          return (
+            <figure key={photo.id} className="card-appear">
+              <div className="rounded-2xl overflow-hidden bg-surface-container shadow-ambient">
+                <img
+                  src={photo.s3_url}
+                  alt={caption || 'Captured moment'}
+                  className="w-full h-auto object-cover block"
+                  loading="lazy"
+                />
+              </div>
+              {caption && (
+                <figcaption className="text-sm text-on-surface-variant mt-3 leading-relaxed">
+                  {caption}
+                </figcaption>
+              )}
+            </figure>
+          );
+        })}
       </div>
-    </div>
+    </section>
   );
 }
 
