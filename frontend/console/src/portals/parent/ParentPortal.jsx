@@ -210,7 +210,7 @@ export default function ParentPortal({ centerId, childId }) {
                   {/* For Today: show summary first, then date header below it */}
                   {isToday && generating && <NarrativeGenerating />}
                   {isToday && !generating && narrative && <EODNarrativeCard narrative={narrative} />}
-                  {isToday && !generating && !narrative && group.events.length >= 2 && (
+                  {isToday && !generating && group.events.length > 0 && (
                     <DailySummary events={group.events} childName={child?.name} />
                   )}
 
