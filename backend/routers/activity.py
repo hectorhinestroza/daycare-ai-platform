@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from backend.storage.activity_handlers import get_activity_log
 from backend.storage.database import get_db
+from backend.storage.models import Admin, Teacher
 
 logger = logging.getLogger(__name__)
 
@@ -44,11 +45,31 @@ class ActivityLogOut(BaseModel):
 # ─── Custom serializer ───────────────────────────────────────
 
 
-def _serialize_log(entry) -> dict:
-    """Convert ActivityLog ORM object to response dict, parsing JSON details."""
-    teacher_name = "Unknown"
+def _serialize_log(entry, db: Session) -> dict:
+    """Convert ActivityLog ORM object to response dict, parsing JSON details.
+
+    Teacher name resolution order:
+      1. entry.event.teacher  — works for single-event actions (APPROVE, REJECT, EDIT)
+      2. actor_id → Teacher   — works for BATCH_APPROVE (no event_id, but actor_id set)
+      3. actor_id → Admin     — director actions logged with an admin actor_id
+      4. Fallback: 'System'
+    """
+    teacher_name = None
+
+    # Path 1: single-event actions carry the teacher via the event relationship
     if entry.event and entry.event.teacher:
         teacher_name = entry.event.teacher.name
+
+    # Path 2/3: BATCH_APPROVE and director actions have no event_id but do have actor_id
+    if teacher_name is None and entry.actor_id:
+        actor = db.query(Teacher).filter(Teacher.id == entry.actor_id).first()
+        if actor is None:
+            actor = db.query(Admin).filter(Admin.id == entry.actor_id).first()
+        if actor:
+            teacher_name = actor.name
+
+    if teacher_name is None:
+        teacher_name = "System"
 
     data = {
         "id": entry.id,
@@ -78,4 +99,4 @@ def list_activity_log(
 ):
     """Get paginated activity log for a center."""
     entries = get_activity_log(db, center_id, event_id=event_id, action=action, limit=limit, offset=offset)
-    return [_serialize_log(e) for e in entries]
+    return [_serialize_log(e, db) for e in entries]

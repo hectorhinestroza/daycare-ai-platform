@@ -142,6 +142,46 @@ def test_batch_approve_creates_log(db_session):
     assert batch_log["details"]["count"] == 2
 
 
+def test_batch_approve_log_resolves_teacher_name(db_session):
+    """BATCH_APPROVE log entry must show the teacher name, not 'Unknown' or 'System'.
+
+    Regression test for: batch approve showed 'Unknown' in the director dashboard
+    because _serialize_log only walked entry.event.teacher, which is None for
+    BATCH_APPROVE logs (no event_id). The fix resolves the name via actor_id.
+    """
+    # Create an event with teacher_id so batch_approve_endpoint can derive reviewed_by
+    event_id = uuid.uuid4()
+    db_session.add(
+        Event(
+            id=event_id,
+            center_id=CENTER_ID,
+            teacher_id=TEACHER_ID,
+            child_name="Jason",
+            event_type="food",
+            raw_transcript="Jason ate lunch",
+            review_tier="teacher",
+            confidence_score=0.9,
+            needs_director_review=False,
+            needs_review=False,
+            status="PENDING",
+        )
+    )
+    db_session.commit()
+
+    client = TestClient(app)
+    client.post(f"/api/events/{CENTER_ID}/batch-approve", json={"child_name": "Jason"})
+
+    resp = client.get(f"/api/activity/{CENTER_ID}")
+    assert resp.status_code == 200
+    logs = resp.json()
+    batch_log = next((log for log in logs if log["action"] == "BATCH_APPROVE"), None)
+    assert batch_log is not None, "BATCH_APPROVE log entry not found"
+    assert batch_log["teacher_name"] == "Ms. Smith", (
+        f"Expected 'Ms. Smith' but got '{batch_log['teacher_name']}' — "
+        "batch approve actor name resolution is broken"
+    )
+
+
 def test_filter_by_action(db_session):
     """Activity log can filter by action type."""
     eid = _create_event(db_session)

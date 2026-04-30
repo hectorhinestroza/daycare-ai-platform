@@ -34,7 +34,7 @@ from backend.storage.events_handlers import (
     reject_event,
     update_event,
 )
-from backend.storage.models import Center as CenterModel
+from backend.storage.models import Center as CenterModel, Event
 from backend.storage.narrative_handlers import get_narrative, upsert_narrative
 
 logger = logging.getLogger(__name__)
@@ -200,7 +200,21 @@ def batch_approve_endpoint(
     db: Session = Depends(get_db),
 ):
     """Approve all pending events for a child at once."""
-    count = batch_approve_events(db, center_id, body.child_name)
+    # Derive reviewed_by from the first pending event for this child.
+    # This is the interim approach while full auth is not yet wired.
+    # Once magic-link auth is in place, the token bearer's ID will replace this.
+    first_pending = (
+        db.query(Event)
+        .filter(
+            Event.center_id == center_id,
+            Event.child_name == body.child_name,
+            Event.status == "PENDING",
+        )
+        .first()
+    )
+    reviewed_by = first_pending.teacher_id if first_pending else None
+
+    count = batch_approve_events(db, center_id, body.child_name, reviewed_by=reviewed_by)
     logger.info(f"Batch approved {count} events for {body.child_name} in center {center_id}")
 
     if count > 0:
