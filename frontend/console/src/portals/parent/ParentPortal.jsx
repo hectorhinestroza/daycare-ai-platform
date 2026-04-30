@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { fetchParentFeed, fetchChildPublic, fetchChildPhotos, fetchNarrative, generateNarrative } from '../../api/index';
+import { useState, useEffect, useCallback } from 'react';
+import { fetchParentFeed, fetchChildPublic, fetchChildPhotos, fetchNarrative } from '../../api/index';
 import { fromApi } from '../../utils/time';
 
 const EVENT_ICON = {
@@ -46,6 +46,11 @@ function todayDateString() {
   return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
+function isWeekday() {
+  const day = new Date().getDay(); // 0 = Sun, 6 = Sat
+  return day >= 1 && day <= 5;
+}
+
 function formatTime(dateStr) {
   const d = fromApi(dateStr);
   if (!d) return '';
@@ -84,27 +89,12 @@ export default function ParentPortal({ centerId, childId }) {
   const [events, setEvents] = useState([]);
   const [photos, setPhotos] = useState([]);
   const [narrative, setNarrative] = useState(null);
-  const [generating, setGenerating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Guard: auto-trigger fires only once per session; manual retries always allowed
-  const autoTriggered = useRef(false);
-
-  const handleGenerate = useCallback(async () => {
-    const today = todayDateString();
-    setGenerating(true);
-    try {
-      const generated = await generateNarrative(centerId, childId, today);
-      setNarrative(generated);
-    } catch (err) {
-      // Silent fail — parent sees the rule-based Daily Snapshot as fallback
-      console.warn('Narrative generation failed:', err.message);
-    } finally {
-      setGenerating(false);
-    }
-  }, [centerId, childId]);
-
+  // Narrative is ONLY set by the scheduler (5 PM) or a director manually triggering
+  // generate-all. The parent portal never auto-generates — it polls and displays
+  // whatever the backend has already produced.
   const loadData = useCallback(async () => {
     try {
       const today = todayDateString();
@@ -119,18 +109,12 @@ export default function ParentPortal({ centerId, childId }) {
       setNarrative(narrativeData);
       setPhotos(photosData);
       setError(null);
-
-      // Auto-trigger once per session when events exist but no narrative yet
-      if (!narrativeData && !autoTriggered.current && feedData.length > 0) {
-        autoTriggered.current = true;
-        handleGenerate();
-      }
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [centerId, childId, handleGenerate]);
+  }, [centerId, childId]);
 
   useEffect(() => {
     loadData();
@@ -201,20 +185,23 @@ export default function ParentPortal({ centerId, childId }) {
           </div>
         ) : (
           <div className="space-y-8">
-            {/* ── Today's summary — always at the top ── */}
-            {/* Renders regardless of whether today has events, so "no updates today"
-                still shows even when yesterday's events are the only ones in the feed. */}
-            {generating && <NarrativeGenerating />}
-            {!generating && narrative && <EODNarrativeCard narrative={narrative} />}
-            {!generating && (() => {
+            {/* ── Today's top card — one of three states ── */}
+            {(() => {
               const todayGroup = dayGroups.find((g) => g.label === 'Today');
-              return todayGroup && todayGroup.events.length > 0
-                ? <DailySummary events={todayGroup.events} childName={child?.name} />
-                : null;
-            })()}
+              const hasTodayEvents = todayGroup && todayGroup.events.length > 0;
 
-            {/* No events at all — show empty state below the narrative */}
-            {events.length === 0 && <EmptyDay childName={child?.name} narrative={narrative} />}
+              // State 1: Narrative exists (scheduler ran or director triggered) → show it, hide digest
+              if (narrative) return <EODNarrativeCard narrative={narrative} />;
+
+              // State 2: Events flowing in but no narrative yet → show live digest
+              if (hasTodayEvents) return <DailySummary events={todayGroup.events} childName={child?.name} />;
+
+              // State 3: No events today on a weekday → absent / not recorded message
+              if (isWeekday()) return <AbsentMessage childName={child?.name} />;
+
+              // Weekend with no events — show nothing
+              return null;
+            })()}
 
             {/* ── Per-day timeline sections ── */}
             {dayGroups.map((group) => (
@@ -277,20 +264,30 @@ function EmptyDay({ childName, narrative }) {
   );
 }
 
-// ─── Narrative generating skeleton ───────────────────────────
+// ─── Absent / no updates message ─────────────────────────────
 
-function NarrativeGenerating() {
+function AbsentMessage({ childName }) {
+  const firstName = childName?.split(' ')[0] || 'Your child';
   return (
-    <div className="glass-panel rounded-xl p-5 mb-5 border border-outline-variant/20 animate-pulse">
+    <div className="glass-panel rounded-xl p-5 mb-5 border border-outline-variant/20">
       <div className="flex items-center gap-2 mb-3">
-        <span className="material-symbols-outlined text-primary text-sm animate-spin">
-          progress_activity
+        <span
+          className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-surface-container text-on-surface-variant"
+        >
+          <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>
+            sentiment_neutral
+          </span>
+          Good day
         </span>
-        <span className="text-xs text-on-surface-variant">Composing today's summary…</span>
+        <span className="text-xs text-on-surface-variant ml-auto">End-of-Day Summary</span>
       </div>
-      <div className="h-4 bg-surface-container rounded w-3/4 mb-2" />
-      <div className="h-3 bg-surface-container rounded w-full mb-1.5" />
-      <div className="h-3 bg-surface-container rounded w-5/6" />
+      <h3 className="font-headline text-lg font-semibold text-on-surface mb-2 leading-snug">
+        No updates recorded for {firstName} today.
+      </h3>
+      <p className="text-sm text-on-surface-variant leading-relaxed">
+        We don't have any logged updates for {firstName} today. This may mean your child was absent,
+        or updates weren't recorded. Please reach out to the center if you have any questions.
+      </p>
     </div>
   );
 }
