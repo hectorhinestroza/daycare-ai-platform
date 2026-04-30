@@ -20,6 +20,7 @@ from backend.storage.events_handlers import (
     create_pending_photo,
     create_photo,
     delete_pending_photo,
+    fan_out_batch_event,
     get_child_by_name,
     get_children_by_center,
     get_pending_photos_by_teacher,
@@ -90,10 +91,10 @@ def _format_event_summary(events: list) -> str:
     if not events:
         return "🤔 I couldn't extract any events from that memo. Could you try again?"
 
-    # Group by child
+    # Group by child (batch events labelled as 'All children')
     by_child: Dict[str, list] = {}
     for event in events:
-        name = event.child_name
+        name = "All children" if getattr(event, "applies_to_all", False) else event.child_name
         if name not in by_child:
             by_child[name] = []
         by_child[name].append(
@@ -130,6 +131,7 @@ async def _process_and_persist_events(
 
     recognized_events = []
     unrecognized_events = []
+    batch_fan_out_count = 0
 
     for base_event in events:
         if base_event.child_name in unrecognized_names:
@@ -139,13 +141,19 @@ async def _process_and_persist_events(
 
     # 1. Persist valid events immediately
     for base_event in recognized_events:
-        child = get_child_by_name(
-            db, teacher.center_id, base_event.child_name
-        )
-        child_id = child.id if child else None
-        create_event_from_base(
-            db, base_event, teacher_id=teacher.id, child_id=child_id
-        )
+        if getattr(base_event, "applies_to_all", False):
+            # Group event — fan out to all active children in the teacher's room
+            created = fan_out_batch_event(
+                db, teacher.center_id, teacher.id, base_event
+            )
+            batch_fan_out_count += len(created)
+            logger.info(
+                f"Batch fan-out: {len(created)} events created for teacher {teacher.id}"
+            )
+        else:
+            child = get_child_by_name(db, teacher.center_id, base_event.child_name)
+            child_id = child.id if child else None
+            create_event_from_base(db, base_event, teacher_id=teacher.id, child_id=child_id)
 
     # 1.5 If the transcript named a child different from the /child context,
     # honor what was actually said and clear the stale context.

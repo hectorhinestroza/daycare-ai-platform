@@ -50,22 +50,32 @@ export default function TeacherQueue({ centerId, addToast }) {
     }
   }
 
-  async function handleBatchApprove(childName) {
+  async function handleBatchApprove({ childName, batchId }) {
     try {
-      const result = await batchApprove(centerId, childName);
+      const result = await batchApprove(centerId, { childName, batchId });
       addToast(result.message);
-      setEvents((prev) => prev.filter((e) => e.child_name !== childName));
+      if (batchId) {
+        setEvents((prev) => prev.filter((e) => e.batch_id !== batchId));
+      } else {
+        setEvents((prev) => prev.filter((e) => e.child_name !== childName));
+      }
     } catch (err) {
       addToast(err.message, 'error');
     }
   }
 
-  const grouped = events.reduce((acc, event) => {
-    const name = event.child_name || 'Unknown';
-    if (!acc[name]) acc[name] = [];
-    acc[name].push(event);
-    return acc;
-  }, {});
+  const batchGroups = {};
+  const regularGroups = {};
+  for (const event of events) {
+    if (event.batch_id) {
+      if (!batchGroups[event.batch_id]) batchGroups[event.batch_id] = [];
+      batchGroups[event.batch_id].push(event);
+    } else {
+      const name = event.child_name || 'Unknown';
+      if (!regularGroups[name]) regularGroups[name] = [];
+      regularGroups[name].push(event);
+    }
+  }
 
   if (error) {
     return (
@@ -116,7 +126,50 @@ export default function TeacherQueue({ centerId, addToast }) {
         <EmptyState role="teacher" />
       ) : (
         <div className="space-y-10">
-          {Object.entries(grouped).map(([childName, childEvents]) => (
+          {/* ── Batch group cards (all-room fan-out) ── */}
+          {Object.entries(batchGroups).map(([batchId, batchEvents]) => {
+            const sample = batchEvents[0];
+            const childNames = batchEvents.map((e) => e.child_name);
+            return (
+              <section key={batchId} className="space-y-4">
+                <div className="glass-panel rounded-xl p-5 border border-outline-variant/20">
+                  <div className="flex items-start gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center shrink-0">
+                      <span className="material-symbols-outlined text-on-primary-container text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>
+                        groups
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-primary">{sample.event_type}</span>
+                        <span className="text-xs text-on-surface-variant bg-surface-container px-2 py-0.5 rounded-full">
+                          All {batchEvents.length} children
+                        </span>
+                      </div>
+                      <p className="text-sm font-medium text-on-surface mt-0.5">{sample.details}</p>
+                    </div>
+                    <button
+                      onClick={() => handleBatchApprove({ batchId })}
+                      className="ai-chip text-xs shrink-0"
+                    >
+                      <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>done_all</span>
+                      Approve All {batchEvents.length}
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {childNames.map((name) => (
+                      <span key={name} className="text-xs bg-surface-container text-on-surface-variant px-2.5 py-1 rounded-full">
+                        {name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </section>
+            );
+          })}
+
+          {/* ── Regular per-child groups ── */}
+          {Object.entries(regularGroups).map(([childName, childEvents]) => (
             <section key={childName} className="space-y-4">
               <div className="flex items-center gap-4 px-2">
                 <div className="w-11 h-11 rounded-full bg-surface-container-highest flex items-center justify-center text-primary font-semibold text-base border border-outline-variant/15 shrink-0">
@@ -127,7 +180,7 @@ export default function TeacherQueue({ centerId, addToast }) {
                   {childEvents.length}
                 </span>
                 {childEvents.length > 1 && (
-                  <button onClick={() => handleBatchApprove(childName)} className="ml-auto ai-chip text-xs">
+                  <button onClick={() => handleBatchApprove({ childName })} className="ml-auto ai-chip text-xs">
                     <span className="material-symbols-outlined text-sm" style={{ fontVariationSettings: "'FILL' 1" }}>
                       done_all
                     </span>

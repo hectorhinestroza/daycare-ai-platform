@@ -86,6 +86,10 @@ class BaseEvent(BaseModel):
     raw_transcript: str  # original text for audit
     photo_ids: List[str] = Field(default_factory=list)
 
+    # Batch event support — set when AI detects "all kids" phrasing
+    applies_to_all: bool = False  # AI detected a group statement
+    batch_id: Optional[UUID] = None  # shared across all fanned-out siblings
+
 
 # ─── Tier 2: Specialized Event Models ─────────────────────────
 

@@ -11,7 +11,10 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from backend.storage.activity_handlers import log_activity
-from backend.storage.models import Child, Event, PendingPhoto, Photo, Teacher
+from backend.storage.models import Child, Event, PendingPhoto, Photo, Room, Teacher
+
+# Event types that must NEVER be fanned out automatically — director handles manually
+_NEVER_FAN_OUT_TYPES = {"incident", "medication"}
 
 # ─── Event CRUD ───────────────────────────────────────────────
 
@@ -76,11 +79,74 @@ def create_event_from_base(
         needs_director_review=base_event.needs_director_review,
         needs_review=base_event.needs_review,
         status=base_event.status.value,
+        applies_to_all=getattr(base_event, "applies_to_all", False),
+        batch_id=getattr(base_event, "batch_id", None),
     )
     db.add(event)
     db.commit()
     db.refresh(event)
     return event
+
+
+def fan_out_batch_event(
+    db: Session,
+    center_id: uuid.UUID,
+    teacher_id: Optional[uuid.UUID],
+    base_event,  # schemas.events.BaseEvent with applies_to_all=True
+) -> List[Event]:
+    """Fan out a group event to one Event row per active child in the teacher's room.
+
+    Rules:
+    - Incidents and medication are NEVER fanned out — returned as-is for director.
+    - If the teacher has no room_id, returns the event unchanged (director queue).
+    - All fanned-out siblings share a batch_id UUID for grouped review in the UI.
+    """
+    event_type_str = base_event.event_type.value if hasattr(base_event.event_type, "value") else str(base_event.event_type)
+
+    # High-stakes types stay as a single director-queue event
+    if event_type_str in _NEVER_FAN_OUT_TYPES:
+        db_event = create_event_from_base(db, base_event, teacher_id=teacher_id)
+        return [db_event]
+
+    # Resolve teacher's room
+    teacher = db.query(Teacher).filter(Teacher.id == teacher_id).first() if teacher_id else None
+    room_id = teacher.room_id if teacher else None
+
+    if not room_id:
+        # No room assigned — treat as low-confidence single event, director queue
+        import logging
+        logging.getLogger(__name__).warning(
+            f"fan_out_batch_event: teacher {teacher_id} has no room_id, falling back to single event"
+        )
+        fallback = base_event.model_copy(update={"review_tier": "director", "needs_director_review": True, "confidence_score": 0.3})
+        db_event = create_event_from_base(db, fallback, teacher_id=teacher_id)
+        return [db_event]
+
+    children = (
+        db.query(Child)
+        .filter(Child.center_id == center_id, Child.room_id == room_id, Child.status == "ACTIVE")
+        .all()
+    )
+
+    if not children:
+        # Room exists but no active children — return single event to director
+        db_event = create_event_from_base(db, base_event, teacher_id=teacher_id)
+        return [db_event]
+
+    shared_batch_id = uuid.uuid4()
+    created: List[Event] = []
+
+    for child in children:
+        sibling = base_event.model_copy(update={
+            "id": uuid.uuid4(),
+            "child_name": child.name,
+            "batch_id": shared_batch_id,
+            "applies_to_all": True,
+        })
+        db_event = create_event_from_base(db, sibling, teacher_id=teacher_id, child_id=child.id)
+        created.append(db_event)
+
+    return created
 
 
 def get_event(db: Session, event_id: uuid.UUID, center_id: uuid.UUID) -> Optional[Event]:
@@ -267,37 +333,47 @@ def get_approved_events_for_child(
 def batch_approve_events(
     db: Session,
     center_id: uuid.UUID,
-    child_name: str,
+    child_name: Optional[str] = None,
     reviewed_by: Optional[uuid.UUID] = None,
+    batch_id: Optional[uuid.UUID] = None,
 ) -> int:
-    """Approve all pending events for a child. Returns count of approved events."""
+    """Approve all pending events for a child OR a batch group.
+
+    Pass child_name to approve all pending events for that child (original behavior).
+    Pass batch_id to approve all events in a fan-out batch group (director use case for
+    incidents/medication that were not auto-fanned-out but are reviewed together).
+    """
     now = datetime.now(UTC)
-    count = (
-        db.query(Event)
-        .filter(
-            Event.center_id == center_id,
-            Event.child_name == child_name,
-            Event.status == "PENDING",
-        )
-        .update(
-            {
-                Event.status: "APPROVED",
-                Event.reviewed_by: reviewed_by,
-                Event.reviewed_at: now,
-            },
-            synchronize_session="fetch",
-        )
+    q = db.query(Event).filter(Event.center_id == center_id, Event.status == "PENDING")
+
+    if batch_id:
+        q = q.filter(Event.batch_id == batch_id)
+    elif child_name:
+        q = q.filter(Event.child_name == child_name)
+    else:
+        raise ValueError("batch_approve_events requires either child_name or batch_id")
+
+    count = q.update(
+        {
+            Event.status: "APPROVED",
+            Event.reviewed_by: reviewed_by,
+            Event.reviewed_at: now,
+        },
+        synchronize_session="fetch",
     )
     db.commit()
     if count > 0:
-        child = get_child_by_name(db, center_id, child_name)
+        label = f"batch_id={batch_id}" if batch_id else child_name
+        child = None
+        if child_name:
+            child = get_child_by_name(db, center_id, child_name)
         log_activity(
             db,
             center_id,
             "BATCH_APPROVE",
             child_id=child.id if child else None,
             actor_id=reviewed_by,
-            details={"child_name": child_name, "count": count},
+            details={"label": label, "count": count},
         )
     return count
 

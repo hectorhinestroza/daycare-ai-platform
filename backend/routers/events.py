@@ -135,6 +135,8 @@ class EventOut(BaseModel):
     reviewed_by: Optional[UUID] = None
     reviewed_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
+    applies_to_all: bool = False
+    batch_id: Optional[UUID] = None
 
     model_config = {"from_attributes": True}
 
@@ -154,7 +156,8 @@ class ActionResponse(BaseModel):
 
 
 class BatchApproveRequest(BaseModel):
-    child_name: str
+    child_name: Optional[str] = None  # approve all pending for this child
+    batch_id: Optional[UUID] = None   # approve all events in a fan-out group
 
 
 class BatchApproveResponse(BaseModel):
@@ -199,32 +202,56 @@ def batch_approve_endpoint(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
-    """Approve all pending events for a child at once."""
-    # Derive reviewed_by from the first pending event for this child.
-    # This is the interim approach while full auth is not yet wired.
-    # Once magic-link auth is in place, the token bearer's ID will replace this.
-    first_pending = (
-        db.query(Event)
-        .filter(
-            Event.center_id == center_id,
-            Event.child_name == body.child_name,
-            Event.status == "PENDING",
-        )
-        .first()
-    )
+    """Approve all pending events for a child OR all events in a batch fan-out group.
+
+    - Pass child_name: approves every pending event for that child (teacher UI).
+    - Pass batch_id: approves every event in a fan-out batch group (director UI —
+      used for incidents/medication that were not auto-fanned-out).
+    """
+    if not body.child_name and not body.batch_id:
+        raise HTTPException(status_code=422, detail="Provide either child_name or batch_id")
+
+    # Derive reviewed_by from the first matching pending event (interim until auth is wired)
+    q = db.query(Event).filter(Event.center_id == center_id, Event.status == "PENDING")
+    if body.batch_id:
+        q = q.filter(Event.batch_id == body.batch_id)
+    else:
+        q = q.filter(Event.child_name == body.child_name)
+    first_pending = q.first()
     reviewed_by = first_pending.teacher_id if first_pending else None
 
-    count = batch_approve_events(db, center_id, body.child_name, reviewed_by=reviewed_by)
-    logger.info(f"Batch approved {count} events for {body.child_name} in center {center_id}")
+    count = batch_approve_events(
+        db, center_id,
+        child_name=body.child_name,
+        batch_id=body.batch_id,
+        reviewed_by=reviewed_by,
+    )
 
+    label = f"batch group" if body.batch_id else body.child_name
+    logger.info(f"Batch approved {count} events for {label} in center {center_id}")
+
+    # Trigger narrative refresh for affected children
     if count > 0:
-        child = get_child_by_name(db, center_id, body.child_name)
-        if child:
-            today = datetime.now(timezone.utc).date()
-            background_tasks.add_task(_refresh_narrative_if_exists, center_id, child.id, today)
+        today = datetime.now(timezone.utc).date()
+        if body.child_name:
+            child = get_child_by_name(db, center_id, body.child_name)
+            if child:
+                background_tasks.add_task(_refresh_narrative_if_exists, center_id, child.id, today)
+        elif body.batch_id:
+            # Fan-out: refresh narrative for all distinct children in the batch
+            batch_events = (
+                db.query(Event)
+                .filter(Event.center_id == center_id, Event.batch_id == body.batch_id)
+                .all()
+            )
+            seen_children = set()
+            for ev in batch_events:
+                if ev.child_id and ev.child_id not in seen_children:
+                    seen_children.add(ev.child_id)
+                    background_tasks.add_task(_refresh_narrative_if_exists, center_id, ev.child_id, today)
 
     return BatchApproveResponse(
-        message=f"Approved {count} events for {body.child_name}",
+        message=f"Approved {count} events for {label}",
         approved_count=count,
     )
 

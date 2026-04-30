@@ -38,11 +38,14 @@ export async function editEvent(centerId, eventId, updates) {
   return res.json();
 }
 
-export async function batchApprove(centerId, childName) {
+export async function batchApprove(centerId, { childName, batchId } = {}) {
+  const body = {};
+  if (batchId) body.batch_id = batchId;
+  else if (childName) body.child_name = childName;
   const res = await fetch(`${API_BASE}/api/events/${centerId}/batch-approve`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ child_name: childName }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`Failed to batch approve: ${res.status}`);
   return res.json();

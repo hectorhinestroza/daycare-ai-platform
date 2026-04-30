@@ -41,6 +41,12 @@ CRITICAL RULES:
 - You will be provided with a list of "Known Children in this room". If ANY child name mentioned in the transcript is NOT a perfect or obvious match for a known child on the roster, you MUST include that transcript name in the "unrecognized_names" array.
 - DO NOT hallucinate or guess unrecognized names into known names if they are completely different. Just extract the event with the said name, and flag it in unrecognized_names.
 
+BATCH / GROUP EVENTS:
+- If the teacher says "all kids", "everyone", "the whole class", "all children", or any clearly
+  all-inclusive phrase, set applies_to_all=true and child_name=null for that event.
+- Do NOT expand the roster yourself — the system will fan-out to individual children.
+- applies_to_all=false for any event that mentions a specific child by name.
+
 CHILD VOICE INSTRUCTION (legal requirement — do not modify):
 If any child's voice is audible in this audio, treat the entire recording as 
 containing children's personal information. Do not transcribe or quote direct 
@@ -48,7 +54,8 @@ speech from any child. Describe only the observable events narrated by the teach
 
 For each distinct event mentioned, extract:
 - event_type: one of "food", "nap", "potty", "kudos", "observation", "health_check", "absence", "note", "activity", "incident", "medication"
-- child_name: the child's name exactly as mentioned in the transcript
+- child_name: the child's name exactly as mentioned in the transcript, or null if applies_to_all=true
+- applies_to_all: true if the teacher used a group phrase ("all kids", "everyone", etc.), false otherwise
 - event_time: ISO 8601 datetime if mentioned, otherwise null
 - confidence_score: a float 0.0–1.0 indicating extraction accuracy. Set below 0.7 if the child name is unclear, event type is ambiguous, or details are vague.
 - details: a brief factual description of what was stated
@@ -63,9 +70,17 @@ Example — teacher says "Carlos played basketball, then had a snack and took a 
 {
   "unrecognized_names": [],
   "events": [
-    {"event_type": "activity", "child_name": "Carlos", "event_time": null, "confidence_score": 0.9, "details": "Played basketball"},
-    {"event_type": "food", "child_name": "Carlos", "event_time": null, "confidence_score": 0.85, "details": "Had a snack"},
-    {"event_type": "nap", "child_name": "Carlos", "event_time": null, "confidence_score": 0.9, "details": "Took a nap"}
+    {"event_type": "activity", "child_name": "Carlos", "applies_to_all": false, "event_time": null, "confidence_score": 0.9, "details": "Played basketball"},
+    {"event_type": "food", "child_name": "Carlos", "applies_to_all": false, "event_time": null, "confidence_score": 0.85, "details": "Had a snack"},
+    {"event_type": "nap", "child_name": "Carlos", "applies_to_all": false, "event_time": null, "confidence_score": 0.9, "details": "Took a nap"}
+  ]
+}
+
+Example — teacher says "all kids had rice and beans for lunch":
+{
+  "unrecognized_names": [],
+  "events": [
+    {"event_type": "food", "child_name": null, "applies_to_all": true, "event_time": null, "confidence_score": 0.95, "details": "Had rice and beans for lunch"}
   ]
 }"""
 
@@ -150,6 +165,7 @@ async def extract_events(
         validated_events: List[BaseEvent] = []
         for raw_event in raw_events:
             try:
+                applies_to_all = bool(raw_event.get("applies_to_all", False))
                 event_type = EventType(raw_event["event_type"])
                 confidence = float(raw_event.get("confidence_score", 0.5))
 
@@ -159,10 +175,16 @@ async def extract_events(
                 needs_director = is_always_review or is_low_confidence
                 review_tier = "director" if needs_director else "teacher"
 
+                # Resolve child_name: null when applies_to_all, else use transcript name
+                resolved_child_name = (
+                    None if applies_to_all
+                    else raw_event.get("child_name") or child_name or "Unknown"
+                )
+
                 event = BaseEvent(
                     id=uuid4(),
                     center_id=center_id,
-                    child_name=raw_event.get("child_name", child_name or "Unknown"),
+                    child_name=resolved_child_name or "ALL",
                     event_type=event_type,
                     event_time=raw_event.get("event_time"),
                     details=raw_event.get("details"),
@@ -173,6 +195,7 @@ async def extract_events(
                     status=EventStatus.PENDING,
                     raw_transcript=transcript,
                     photo_ids=[],
+                    applies_to_all=applies_to_all,
                 )
                 validated_events.append(event)
             except (ValidationError, KeyError, ValueError) as e:

@@ -183,6 +183,12 @@ class Event(Base):
     needs_director_review = Column(Boolean, nullable=False, default=False)
     needs_review = Column(Boolean, nullable=False, default=False)
 
+    # Batch event support — "all kids ate rice and beans"
+    # applies_to_all: AI detected a group statement; fan_out_batch_event() was called
+    # batch_id: shared UUID linking all sibling events from the same group statement
+    applies_to_all = Column(Boolean, nullable=False, default=False)
+    batch_id = Column(UUID(as_uuid=True), nullable=True)
+
     # Status
     status = Column(String(20), nullable=False, default="PENDING")  # PENDING | APPROVED | REJECTED
     reviewed_by = Column(UUID(as_uuid=True), nullable=True)  # admin or teacher who approved
