@@ -203,36 +203,37 @@ export default function ParentPortal({ centerId, childId }) {
           <EmptyDay childName={child?.name} narrative={narrative} />
         ) : (
           <div className="space-y-8">
-            {dayGroups.map((group, idx) => (
-              <section key={group.date}>
-                {/* Date header */}
-                <div className="flex items-center gap-3 mb-4">
-                  <h2 className="font-headline text-lg text-on-surface">{group.label}</h2>
-                  <span className="text-xs text-on-surface-variant bg-surface-container px-2.5 py-0.5 rounded-full">
-                    {group.events.length} {group.events.length === 1 ? 'update' : 'updates'}
-                  </span>
-                </div>
+            {dayGroups.map((group) => {
+              const isToday = group.label === 'Today';
+              return (
+                <section key={group.date}>
+                  {/* For Today: show summary first, then date header below it */}
+                  {isToday && generating && <NarrativeGenerating />}
+                  {isToday && !generating && narrative && <EODNarrativeCard narrative={narrative} />}
+                  {isToday && !generating && !narrative && group.events.length >= 2 && (
+                    <DailySummary events={group.events} childName={child?.name} />
+                  )}
 
-                {/* Today's summary — AI narrative takes priority over rule-based */}
-                {idx === 0 && generating ? (
-                  <NarrativeGenerating />
-                ) : idx === 0 && narrative ? (
-                  <EODNarrativeCard narrative={narrative} />
-                ) : idx === 0 && group.events.length >= 2 ? (
-                  <DailySummary events={group.events} childName={child?.name} />
-                ) : null}
+                  {/* Date header — below summary for Today, above timeline for past days */}
+                  <div className="flex items-center gap-3 mb-4 mt-2">
+                    <h2 className="font-headline text-lg text-on-surface">{group.label}</h2>
+                    <span className="text-xs text-on-surface-variant bg-surface-container px-2.5 py-0.5 rounded-full">
+                      {group.events.length} {group.events.length === 1 ? 'update' : 'updates'}
+                    </span>
+                  </div>
 
-                {/* Captured Moments — today's photos */}
-                {idx === 0 && <PhotoGallery photos={photos} narrative={narrative} />}
+                  {/* Captured Moments — photos for this day */}
+                  <PhotoGallery photos={photos} targetDate={group.date} narrative={isToday ? narrative : null} />
 
-                {/* Timeline */}
-                <div className="space-y-3">
-                  {group.events.map((event) => (
-                    <ParentEventCard key={event.id} event={event} />
-                  ))}
-                </div>
-              </section>
-            ))}
+                  {/* Timeline */}
+                  <div className="space-y-3">
+                    {group.events.map((event) => (
+                      <ParentEventCard key={event.id} event={event} />
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
           </div>
         )}
       </main>
@@ -320,23 +321,26 @@ function EODNarrativeCard({ narrative }) {
 }
 
 // ─── Captured Moments — vertical photo cards (per Stitch mock) ───
+// Shows photos for the given day group. `targetDate` is a JS Date.toDateString()
+// value (e.g. "Mon Apr 28 2026") so we can show photos across multiple days.
 
-function PhotoGallery({ photos, narrative }) {
+function PhotoGallery({ photos, targetDate, narrative }) {
   const photoCaptions = narrative?.photo_captions || {};
 
-  const today = new Date().toDateString();
-  const todays = (photos || []).filter((p) => {
+  const dayPhotos = (photos || []).filter((p) => {
+    if (!p.s3_url) return false;
     const created = fromApi(p.created_at);
-    return created && created.toDateString() === today && p.s3_url;
+    // targetDate is a JS dateString (Date.toDateString()), match by that.
+    return created && created.toDateString() === targetDate;
   });
 
-  if (todays.length === 0) return null;
+  if (dayPhotos.length === 0) return null;
 
   return (
-    <section className="mb-8">
-      <h2 className="font-headline text-lg text-on-surface mb-4">Captured Moments</h2>
+    <section className="mb-6">
+      <h2 className="font-headline text-base text-on-surface-variant mb-3">Captured Moments</h2>
       <div className="space-y-6">
-        {todays.map((photo) => {
+        {dayPhotos.map((photo) => {
           const caption = photoCaptions[photo.id] || photo.caption || null;
           return (
             <figure key={photo.id} className="card-appear">
