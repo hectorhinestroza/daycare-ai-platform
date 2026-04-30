@@ -199,41 +199,49 @@ export default function ParentPortal({ centerId, childId }) {
             <div className="spinner" />
             <p className="text-sm font-medium">Loading updates...</p>
           </div>
-        ) : events.length === 0 ? (
-          <EmptyDay childName={child?.name} narrative={narrative} />
         ) : (
           <div className="space-y-8">
-            {dayGroups.map((group) => {
-              const isToday = group.label === 'Today';
-              return (
-                <section key={group.date}>
-                  {/* For Today: show summary first, then date header below it */}
-                  {isToday && generating && <NarrativeGenerating />}
-                  {isToday && !generating && narrative && <EODNarrativeCard narrative={narrative} />}
-                  {isToday && !generating && group.events.length > 0 && (
-                    <DailySummary events={group.events} childName={child?.name} />
-                  )}
+            {/* ── Today's summary — always at the top ── */}
+            {/* Renders regardless of whether today has events, so "no updates today"
+                still shows even when yesterday's events are the only ones in the feed. */}
+            {generating && <NarrativeGenerating />}
+            {!generating && narrative && <EODNarrativeCard narrative={narrative} />}
+            {!generating && (() => {
+              const todayGroup = dayGroups.find((g) => g.label === 'Today');
+              return todayGroup && todayGroup.events.length > 0
+                ? <DailySummary events={todayGroup.events} childName={child?.name} />
+                : null;
+            })()}
 
-                  {/* Date header — below summary for Today, above timeline for past days */}
-                  <div className="flex items-center gap-3 mb-4 mt-2">
-                    <h2 className="font-headline text-lg text-on-surface">{group.label}</h2>
-                    <span className="text-xs text-on-surface-variant bg-surface-container px-2.5 py-0.5 rounded-full">
-                      {group.events.length} {group.events.length === 1 ? 'update' : 'updates'}
-                    </span>
-                  </div>
+            {/* No events at all — show empty state below the narrative */}
+            {events.length === 0 && <EmptyDay childName={child?.name} narrative={narrative} />}
 
-                  {/* Captured Moments — photos for this day */}
-                  <PhotoGallery photos={photos} targetDate={group.date} narrative={isToday ? narrative : null} />
+            {/* ── Per-day timeline sections ── */}
+            {dayGroups.map((group) => (
+              <section key={group.date}>
+                {/* Date header */}
+                <div className="flex items-center gap-3 mb-4 mt-2">
+                  <h2 className="font-headline text-lg text-on-surface">{group.label}</h2>
+                  <span className="text-xs text-on-surface-variant bg-surface-container px-2.5 py-0.5 rounded-full">
+                    {group.events.length} {group.events.length === 1 ? 'update' : 'updates'}
+                  </span>
+                </div>
 
-                  {/* Timeline */}
-                  <div className="space-y-3">
-                    {group.events.map((event) => (
-                      <ParentEventCard key={event.id} event={event} />
-                    ))}
-                  </div>
-                </section>
-              );
-            })}
+                {/* Captured Moments — photos for this day */}
+                <PhotoGallery
+                  photos={photos}
+                  targetDate={group.date}
+                  narrative={group.label === 'Today' ? narrative : null}
+                />
+
+                {/* Timeline */}
+                <div className="space-y-3">
+                  {group.events.map((event) => (
+                    <ParentEventCard key={event.id} event={event} />
+                  ))}
+                </div>
+              </section>
+            ))}
           </div>
         )}
       </main>
