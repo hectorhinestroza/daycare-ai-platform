@@ -60,6 +60,11 @@ async def _refresh_narrative_if_exists(center_id: UUID, child_id: UUID, event_da
     Only regenerates — never creates a narrative that didn't exist yet.
     Debounced: subsequent calls within 2 minutes for the same child+date are skipped.
 
+    **Time guard**: Only regenerates *after* the center's local 5 PM (EOD hour).
+    Before 5 PM, the narrative should not be refreshed on every approval — the
+    scheduled 5 PM run handles creation, and mid-day approvals should not trigger
+    GPT-4o calls or show premature narratives to parents.
+
     Uses the center's local timezone to determine the target date — late-night events
     (e.g. 10:50 PM ET) have event_time in UTC on the *next* UTC calendar day, but the
     narrative lives on the *local* calendar date.
@@ -74,9 +79,22 @@ async def _refresh_narrative_if_exists(center_id: UUID, child_id: UUID, event_da
         center = db.query(CenterModel).filter(CenterModel.id == center_id).first()
         tz_str = (center.timezone if center else None) or "America/New_York"
         try:
-            target_date = datetime.now(ZoneInfo(tz_str)).date()
+            local_now = datetime.now(ZoneInfo(tz_str))
+            target_date = local_now.date()
         except (ZoneInfoNotFoundError, Exception):
+            local_now = now
             target_date = event_date
+
+        # ── Time guard: skip regeneration before EOD (5 PM local) ──
+        # Mid-day approvals should NOT regenerate narratives. The scheduler handles
+        # creation at 5 PM, and only post-EOD approvals should update the narrative.
+        _EOD_HOUR = 17
+        if local_now.hour < _EOD_HOUR:
+            logger.debug(
+                f"Narrative refresh skipped — only {local_now.hour}:00 local, "
+                f"before EOD ({_EOD_HOUR}:00) for center {center_id}"
+            )
+            return
 
         key = (str(center_id), str(child_id), str(target_date))
 
@@ -110,6 +128,7 @@ async def _refresh_narrative_if_exists(center_id: UUID, child_id: UUID, event_da
         logger.error(f"Background narrative refresh failed for child {child_id}: {e}", exc_info=True)
     finally:
         db.close()
+
 
 
 # ─── Response Schemas ─────────────────────────────────────────

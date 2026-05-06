@@ -204,7 +204,14 @@ export default function ParentPortal({ centerId, childId }) {
             })()}
 
             {/* ── Per-day timeline sections ── */}
-            {dayGroups.map((group) => (
+            {dayGroups
+              .filter((group) => {
+                // When narrative is showing, skip the Today timeline — the EOD
+                // card already summarises the day. Past days still render.
+                if (narrative && group.label === 'Today') return false;
+                return true;
+              })
+              .map((group) => (
               <section key={group.date}>
                 {/* Date header */}
                 <div className="flex items-center gap-3 mb-4 mt-2">
