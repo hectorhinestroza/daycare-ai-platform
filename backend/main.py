@@ -19,6 +19,31 @@ logger = logging.getLogger(__name__)
 # Load .env before anything else
 load_dotenv()
 
+# TODO(pilot): Sentry init is currently inline here as a stub.
+#   Once a real DSN is provisioned, revisit this:
+#     - Move to a dedicated backend/observability/sentry.py module
+#     - Tune traces_sample_rate (currently 0.0 — no perf data)
+#     - Verify pii_scrubber works against real events (raise inside extraction
+#       with a transcript and confirm "[redacted]" in the Sentry UI)
+#     - Add release tagging (git_sha) once /health exposes it (Phase 4)
+import sentry_sdk
+
+from backend.config import get_settings
+from backend.utils.safe_logging import pii_scrubber
+
+_sentry_settings = get_settings()
+if _sentry_settings.sentry_dsn:
+    sentry_sdk.init(
+        dsn=_sentry_settings.sentry_dsn,
+        environment=_sentry_settings.environment,
+        traces_sample_rate=_sentry_settings.sentry_traces_sample_rate,
+        send_default_pii=False,
+        before_send=pii_scrubber,
+    )
+    logger.info("Sentry initialized")
+else:
+    logger.info("Sentry DSN not set — SDK init skipped (no-op)")
+
 from backend.middleware import (
     GlobalExceptionMiddleware,
     RequestIDMiddleware,

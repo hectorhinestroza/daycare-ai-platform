@@ -15,3 +15,4 @@ pytest-asyncio
 Pillow
 apscheduler
 boto3
+sentry-sdk[fastapi]
