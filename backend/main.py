@@ -54,6 +54,7 @@ from backend.middleware import (
     RequestTimingMiddleware,
 )
 from backend.routers.activity import router as activity_router
+from backend.routers.auth import router as auth_router
 from backend.routers.consent import router as consent_router
 from backend.routers.events import router as events_router
 from backend.routers.narratives import router as narratives_router
@@ -99,6 +100,7 @@ app.add_middleware(
 
 # Routers
 app.include_router(activity_router)
+app.include_router(auth_router)
 app.include_router(consent_router)
 app.include_router(events_router)
 app.include_router(narratives_router)
