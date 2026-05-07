@@ -19,21 +19,40 @@ logger = logging.getLogger(__name__)
 # Load .env before anything else
 load_dotenv()
 
-from backend.middleware import (
+# Initialize Sentry as early as possible. Empty DSN → init is a no-op.
+import sentry_sdk  # noqa: E402
+
+from backend.config import get_settings  # noqa: E402
+from backend.utils.safe_logging import pii_scrubber  # noqa: E402
+
+_sentry_settings = get_settings()
+if _sentry_settings.sentry_dsn:
+    sentry_sdk.init(
+        dsn=_sentry_settings.sentry_dsn,
+        environment=_sentry_settings.environment,
+        traces_sample_rate=_sentry_settings.sentry_traces_sample_rate,
+        send_default_pii=False,
+        before_send=pii_scrubber,
+    )
+    logger.info("Sentry initialized")
+else:
+    logger.info("Sentry DSN not set — SDK init skipped (no-op)")
+
+from backend.middleware import (  # noqa: E402
     GlobalExceptionMiddleware,
     RequestIDMiddleware,
     RequestTimingMiddleware,
 )
-from backend.routers.activity import router as activity_router
-from backend.routers.consent import router as consent_router
-from backend.routers.events import router as events_router
-from backend.routers.narratives import router as narratives_router
-from backend.routers.onboarding import router as onboarding_router
-from backend.routers.photos import router as photos_router
-from backend.routers.whatsapp import router as whatsapp_router
-from backend.services.scheduler import start_scheduler
-from backend.startup.legal_checks import get_legal_status_fields
-from backend.storage.database import Base, engine
+from backend.routers.activity import router as activity_router  # noqa: E402
+from backend.routers.consent import router as consent_router  # noqa: E402
+from backend.routers.events import router as events_router  # noqa: E402
+from backend.routers.narratives import router as narratives_router  # noqa: E402
+from backend.routers.onboarding import router as onboarding_router  # noqa: E402
+from backend.routers.photos import router as photos_router  # noqa: E402
+from backend.routers.whatsapp import router as whatsapp_router  # noqa: E402
+from backend.services.scheduler import start_scheduler  # noqa: E402
+from backend.startup.legal_checks import get_legal_status_fields  # noqa: E402
+from backend.storage.database import Base, engine  # noqa: E402
 
 
 @asynccontextmanager

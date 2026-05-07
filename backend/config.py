@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     aws_s3_bucket: str = ""
     aws_s3_region: str = "us-east-1"
 
+    # Sentry (empty DSN → SDK init is a no-op)
+    sentry_dsn: str = ""
+    sentry_traces_sample_rate: float = 0.0
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
