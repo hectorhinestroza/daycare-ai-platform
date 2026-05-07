@@ -69,7 +69,24 @@ def get_child_for_processing(
 
     is_production = environment.lower() == "production"
 
-    # Query the consent-gated view
+    if not is_production:
+        # Dev/sandbox bypass — query the children table directly via ORM.
+        # Skipping the consent view here also keeps SQLite-backed unit tests
+        # working (the view is only created by a Postgres-specific migration).
+        # ORM handles UUID adaptation correctly across Postgres + SQLite.
+        from backend.storage.models import Child
+        logger.warning(
+            f"CONSENT DEV BYPASS: skipping consent check for child {child_id} "
+            f"in {environment} mode. Stage: {pipeline_stage}. "
+            f"This would enforce in production."
+        )
+        return (
+            db.query(Child)
+            .filter(Child.id == child_id, Child.center_id == center_id)
+            .first()
+        )
+
+    # Production: query the consent-gated view
     result = db.execute(
         _CONSENT_VIEW_QUERY,
         {"child_id": str(child_id), "center_id": str(center_id)},
@@ -78,22 +95,6 @@ def get_child_for_processing(
     if result is not None:
         # Consent confirmed — child may enter pipeline
         return result
-
-    # No consent record found
-    if not is_production:
-        # Dev/sandbox bypass — log warning and return child directly
-        logger.warning(
-            f"CONSENT DEV BYPASS: child {child_id} has no active consent. "
-            f"Gate bypassed in {environment} mode. "
-            f"Stage: {pipeline_stage}. "
-            f"This would block in production. Implementto collect consent."
-        )
-        # Fall back to direct children table for dev
-        child_row = db.execute(
-            _CHILDREN_DIRECT_QUERY,
-            {"child_id": str(child_id), "center_id": str(center_id)},
-        ).fetchone()
-        return child_row  # May be None if child doesn't exist at all
 
     # Production: gate blocks — log audit record and queue the event
     _log_gate_block(

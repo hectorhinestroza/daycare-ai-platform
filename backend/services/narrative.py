@@ -17,12 +17,11 @@ from datetime import datetime, time, timedelta, timezone
 from typing import List
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from openai import AsyncOpenAI
 from sqlalchemy import Date, and_, cast, func, or_
 from sqlalchemy.orm import Session
 
-from backend.config import get_settings
 from backend.storage.models import Center, Child, Event
+from backend.utils.openai_client import get_openai_client
 from backend.utils.openai_wrapper import call_openai_async_with_logging
 
 logger = logging.getLogger(__name__)
@@ -165,8 +164,7 @@ async def generate_narrative(
         }
 
     # ── 4. Call GPT-4o ────────────────────────────────────────
-    settings = get_settings()
-    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    client = get_openai_client()
 
     events_block = _build_events_block(events)
     user_prompt = (
@@ -176,8 +174,8 @@ async def generate_narrative(
     )
 
     logger.info(
-        f"Generating EOD narrative for {child.name} ({child_id}) on {target_date} "
-        f"— {len(events)} events"
+        "narrative.generating child_id=%s date=%s events=%d",
+        child_id, target_date, len(events),
     )
 
     try:
@@ -214,9 +212,12 @@ async def generate_narrative(
             "photo_captions": photo_captions,
         }
 
-    except json.JSONDecodeError as e:
-        logger.error(f"GPT-4o returned invalid JSON for narrative: {e}")
-        raise ValueError("Narrative generation returned invalid JSON") from e
+    except json.JSONDecodeError:
+        logger.error("narrative.invalid_json child_id=%s", child_id)
+        raise ValueError("Narrative generation returned invalid JSON") from None
     except Exception as e:
-        logger.error(f"Narrative generation failed: {type(e).__name__}: {e}", exc_info=True)
+        logger.error(
+            "narrative.failed child_id=%s error_type=%s",
+            child_id, type(e).__name__, exc_info=True,
+        )
         raise

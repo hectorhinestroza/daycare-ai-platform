@@ -409,9 +409,43 @@ class ParentalConsent(Base):
     withdrawn_at = Column(DateTime(timezone=True), nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
 
-    # Unique constraint: only one active consent per child at a time
+    # Unique constraint: only one ACTIVE consent per child at a time.
+    # Partial unique index — withdrawn consents accumulate freely as history.
+    # SQLAlchemy renders this as `WHERE is_active = TRUE` on PostgreSQL.
     __table_args__ = (
-        UniqueConstraint("child_id", "is_active", name="unique_active_consent"),
+        Index(
+            "unique_active_consent_per_child",
+            "child_id",
+            unique=True,
+            postgresql_where=Column("is_active") == True,  # noqa: E712
+        ),
+    )
+
+
+# ─── Processed Messages (Twilio dedup) ───────────
+
+
+class ProcessedMessage(Base):
+    """Dedup ledger for Twilio webhook retries.
+
+    Twilio retries failed webhook deliveries — without this table, a single
+    voice memo can be processed multiple times. Insert ON CONFLICT DO NOTHING
+    at the top of the webhook returns NULL when the SID has already been seen.
+
+    Rows are short-lived (~7 days) and cleaned by a nightly scheduler job.
+    """
+
+    __tablename__ = "processed_messages"
+
+    message_sid = Column(Text, primary_key=True)
+    processed_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        Index("idx_processed_messages_processed_at", "processed_at"),
     )
 
 

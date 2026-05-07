@@ -37,7 +37,12 @@ class Settings(BaseSettings):
     sentry_dsn: str = ""
     sentry_traces_sample_rate: float = 0.0
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        # Ignore unknown env vars (e.g. VITE_* frontend keys that share .env).
+        "extra": "ignore",
+    }
 
 
 @lru_cache

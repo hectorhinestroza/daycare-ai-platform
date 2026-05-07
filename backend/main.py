@@ -33,14 +33,18 @@ from backend.utils.safe_logging import pii_scrubber
 
 _sentry_settings = get_settings()
 if _sentry_settings.sentry_dsn:
-    sentry_sdk.init(
-        dsn=_sentry_settings.sentry_dsn,
-        environment=_sentry_settings.environment,
-        traces_sample_rate=_sentry_settings.sentry_traces_sample_rate,
-        send_default_pii=False,
-        before_send=pii_scrubber,
-    )
-    logger.info("Sentry initialized")
+    try:
+        sentry_sdk.init(
+            dsn=_sentry_settings.sentry_dsn.strip(),
+            environment=_sentry_settings.environment,
+            traces_sample_rate=_sentry_settings.sentry_traces_sample_rate,
+            send_default_pii=False,
+            before_send=pii_scrubber,
+        )
+        logger.info("Sentry initialized")
+    except Exception as e:
+        # Malformed DSN must not crash the app. Warn loudly so it gets fixed.
+        logger.error(f"Sentry init failed ({type(e).__name__}: {e}) — continuing without Sentry")
 else:
     logger.info("Sentry DSN not set — SDK init skipped (no-op)")
 

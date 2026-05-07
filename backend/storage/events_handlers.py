@@ -93,6 +93,7 @@ def fan_out_batch_event(
     center_id: uuid.UUID,
     teacher_id: Optional[uuid.UUID],
     base_event,  # schemas.events.BaseEvent with applies_to_all=True
+    environment: str = "development",
 ) -> List[Event]:
     """Fan out a group event to one Event row per active child in the teacher's room.
 
@@ -100,7 +101,13 @@ def fan_out_batch_event(
     - Incidents and medication are NEVER fanned out — returned as-is for director.
     - If the teacher has no room_id, returns the event unchanged (director queue).
     - All fanned-out siblings share a batch_id UUID for grouped review in the UI.
+    - Each fanned-out child passes through the consent gate. Children without
+      active consent are skipped (the gate queues their event in
+      pending_consent_queue) — they do NOT appear as siblings.
     """
+    # Local import to avoid module-level circular dependency on consent_gate.
+    from backend.utils.consent_gate import get_child_for_processing
+
     event_type_str = base_event.event_type.value if hasattr(base_event.event_type, "value") else str(base_event.event_type)
 
     # High-stakes types stay as a single director-queue event
@@ -137,6 +144,19 @@ def fan_out_batch_event(
     created: List[Event] = []
 
     for child in children:
+        # Per-child consent gate. Blocked children are queued in
+        # pending_consent_queue; we just skip them in the fan-out.
+        gated = get_child_for_processing(
+            child_id=child.id,
+            center_id=center_id,
+            db=db,
+            environment=environment,
+            pipeline_stage="event_extraction_batch",
+            raw_event_ref=base_event.model_dump_json(),
+        )
+        if gated is None:
+            continue
+
         sibling = base_event.model_copy(update={
             "id": uuid.uuid4(),
             "child_name": child.name,

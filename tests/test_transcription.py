@@ -1,6 +1,6 @@
 """Tests for the transcription service (Issue #2)."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -11,12 +11,12 @@ class TestTranscribeAudio:
     """Test Whisper transcription service."""
 
     @pytest.mark.asyncio
-    @patch("backend.services.transcription.OpenAI")
-    async def test_successful_transcription(self, mock_openai_class):
+    @patch("backend.services.transcription.get_openai_client")
+    async def test_successful_transcription(self, mock_get_client):
         mock_client = MagicMock()
-        mock_openai_class.return_value = mock_client
-        mock_client.audio.transcriptions.create.return_value = (
-            "Jason ate mac and cheese for lunch and took a nap at noon."
+        mock_get_client.return_value = mock_client
+        mock_client.audio.transcriptions.create = AsyncMock(
+            return_value="Jason ate mac and cheese for lunch and took a nap at noon."
         )
 
         result = await transcribe_audio(b"fake_audio_bytes", "test.ogg")
@@ -30,21 +30,21 @@ class TestTranscribeAudio:
             await transcribe_audio(b"", "test.ogg")
 
     @pytest.mark.asyncio
-    @patch("backend.services.transcription.OpenAI")
-    async def test_empty_transcript_raises(self, mock_openai_class):
+    @patch("backend.services.transcription.get_openai_client")
+    async def test_empty_transcript_raises(self, mock_get_client):
         mock_client = MagicMock()
-        mock_openai_class.return_value = mock_client
-        mock_client.audio.transcriptions.create.return_value = "   "
+        mock_get_client.return_value = mock_client
+        mock_client.audio.transcriptions.create = AsyncMock(return_value="   ")
 
         with pytest.raises(ValueError, match="empty transcript"):
             await transcribe_audio(b"fake_audio", "test.ogg")
 
     @pytest.mark.asyncio
-    @patch("backend.services.transcription.OpenAI")
-    async def test_api_failure_propagates(self, mock_openai_class):
+    @patch("backend.services.transcription.get_openai_client")
+    async def test_api_failure_propagates(self, mock_get_client):
         mock_client = MagicMock()
-        mock_openai_class.return_value = mock_client
-        mock_client.audio.transcriptions.create.side_effect = Exception("API down")
+        mock_get_client.return_value = mock_client
+        mock_client.audio.transcriptions.create = AsyncMock(side_effect=Exception("API down"))
 
         with pytest.raises(Exception, match="API down"):
             await transcribe_audio(b"fake_audio", "test.ogg")

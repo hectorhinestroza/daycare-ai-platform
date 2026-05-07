@@ -2,6 +2,7 @@
 
 import asyncio
 import gc
+import hashlib
 import json
 import logging
 import uuid
@@ -9,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Dict, Optional
 
 from fastapi import APIRouter, Depends, Form, Response
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from backend.config import get_settings
@@ -32,6 +34,7 @@ from backend.utils.media import delete_twilio_media, download_twilio_media
 from backend.utils.photo import build_pending_s3_key, build_photo_s3_key, strip_exif
 from backend.utils.s3 import delete_photo as delete_s3_object
 from backend.utils.s3 import download_from_s3, upload_photo
+from backend.utils.twilio_security import verify_twilio_signature
 from schemas.events import BaseEvent
 
 logger = logging.getLogger(__name__)
@@ -43,6 +46,11 @@ router = APIRouter(prefix="/webhook", tags=["whatsapp"])
 _command_context: Dict[str, dict] = {}
 
 
+def _phone_hash(phone: str) -> str:
+    """Short stable hash of a phone number for log correlation (no PII)."""
+    return hashlib.sha256((phone or "").encode()).hexdigest()[:8]
+
+
 def _build_twiml_response(message: str) -> Response:
     """Build a TwiML XML response for Twilio."""
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -50,6 +58,43 @@ def _build_twiml_response(message: str) -> Response:
     <Message>{message}</Message>
 </Response>"""
     return Response(content=twiml, media_type="application/xml")
+
+
+def _build_empty_twiml() -> Response:
+    """Empty TwiML — used for retries we've already processed (no double-reply to teacher)."""
+    return Response(
+        content='<?xml version="1.0" encoding="UTF-8"?><Response/>',
+        media_type="application/xml",
+    )
+
+
+def _claim_message_sid(db: Session, message_sid: str) -> bool:
+    """Atomically claim a Twilio MessageSid.
+
+    Returns True if this is the first time we've seen the SID (caller should
+    process the message); False if the SID was already processed (caller should
+    short-circuit with an empty TwiML).
+
+    Commits the claim row immediately so a crash mid-processing doesn't leave
+    us re-running the pipeline on the next Twilio retry.
+    """
+    if not message_sid:
+        # Twilio always sends MessageSid, but be defensive: if missing, don't
+        # block processing — just skip dedup.
+        return True
+
+    # CURRENT_TIMESTAMP is portable across Postgres and SQLite (used in tests).
+    row = db.execute(
+        text(
+            "INSERT INTO processed_messages (message_sid, processed_at) "
+            "VALUES (:sid, CURRENT_TIMESTAMP) "
+            "ON CONFLICT (message_sid) DO NOTHING "
+            "RETURNING message_sid"
+        ),
+        {"sid": message_sid},
+    ).fetchone()
+    db.commit()
+    return row is not None
 
 
 def _get_command_context(phone: str) -> dict:
@@ -139,12 +184,16 @@ async def _process_and_persist_events(
         else:
             recognized_events.append(base_event)
 
-    # 1. Persist valid events immediately
+    # 1. Persist valid events immediately (consent-gated per child)
+    settings = get_settings()
+    blocked_count = 0
     for base_event in recognized_events:
         if getattr(base_event, "applies_to_all", False):
-            # Group event — fan out to all active children in the teacher's room
+            # Group event — fan out to all active children in the teacher's room.
+            # The fan-out function gates each child individually.
             created = fan_out_batch_event(
-                db, teacher.center_id, teacher.id, base_event
+                db, teacher.center_id, teacher.id, base_event,
+                environment=settings.environment,
             )
             batch_fan_out_count += len(created)
             logger.info(
@@ -152,6 +201,24 @@ async def _process_and_persist_events(
             )
         else:
             child = get_child_by_name(db, teacher.center_id, base_event.child_name)
+            if child is not None:
+                # Consent gate: in production, blocks events for children without
+                # active parental consent and queues them in pending_consent_queue.
+                gated = get_child_for_processing(
+                    child_id=child.id,
+                    center_id=teacher.center_id,
+                    db=db,
+                    environment=settings.environment,
+                    pipeline_stage="event_extraction",
+                    raw_event_ref=base_event.model_dump_json(),
+                )
+                if gated is None:
+                    blocked_count += 1
+                    logger.info(
+                        f"consent_gate.blocked_event child_id={child.id} "
+                        f"center_id={teacher.center_id}"
+                    )
+                    continue
             child_id = child.id if child else None
             create_event_from_base(db, base_event, teacher_id=teacher.id, child_id=child_id)
 
@@ -195,7 +262,7 @@ async def _process_and_persist_events(
     return _build_twiml_response(msg)
 
 
-@router.post("/whatsapp")
+@router.post("/whatsapp", dependencies=[Depends(verify_twilio_signature)])
 async def whatsapp_webhook(
     From: str = Form(""),
     Body: str = Form(""),
@@ -219,8 +286,14 @@ async def whatsapp_webhook(
     body = Body.strip()
     num_media = int(NumMedia)
 
-    logger.warning(
-        f"=== INCOMING WHATSAPP ===\n  From: {phone}\n  Body: '{body}'\n  NumMedia: {num_media}"
+    # Dedup Twilio retries before doing any work.
+    if not _claim_message_sid(db, MessageSid):
+        logger.info(f"webhook.duplicate_message message_sid={MessageSid}")
+        return _build_empty_twiml()
+
+    logger.info(
+        "webhook.received phone_hash=%s body_length=%d num_media=%d message_sid=%s",
+        _phone_hash(phone), len(body), num_media, MessageSid,
     )
 
     # 1. Handle commands first (no DB lookup needed for parsing)
@@ -240,7 +313,7 @@ async def whatsapp_webhook(
     # 2. Look up Teacher from DB
     teacher = get_teacher_by_phone(db, phone)
     if not teacher:
-        logger.warning(f"Unregistered phone number hit webhook: {phone}")
+        logger.warning("webhook.teacher_unknown phone_hash=%s", _phone_hash(phone))
         if command_reply:
             # Still return command reply for unregistered users
             return _build_twiml_response(command_reply)
@@ -272,7 +345,8 @@ async def whatsapp_webhook(
                         )
                         if child_record is None:
                             logger.warning(
-                                f"No consent for child {child.id} — discarding pending photo {p.id}"
+                                "consent_gate.blocked_pending_photo child_id=%s pending_photo_id=%s",
+                                child.id, p.id,
                             )
                             delete_s3_object(p.s3_temp_key)
                             delete_pending_photo(db, p.id)
@@ -293,7 +367,10 @@ async def whatsapp_webhook(
                         delete_pending_photo(db, p.id)
                         processed += 1
                     except Exception as e:
-                        logger.error(f"Failed to resolve pending photo {p.id}: {e}", exc_info=True)
+                        logger.error(
+                            "photo.pending_resolve_failed pending_photo_id=%s error_type=%s",
+                            p.id, type(e).__name__, exc_info=True,
+                        )
 
                 if processed:
                     reply += f"\n📷 {processed} photo(s) saved for {child_context}."
@@ -338,7 +415,8 @@ async def whatsapp_webhook(
                         db.delete(fb)
                     except Exception as e:
                         logger.error(
-                            f"Failed to restore pending event: {e}"
+                            "pending_event.restore_failed pending_event_id=%s error_type=%s",
+                            fb.id, type(e).__name__,
                         )
 
                 db.commit()
@@ -398,7 +476,10 @@ async def whatsapp_webhook(
             )
 
         except Exception as e:
-            logger.error(f"Voice pipeline failed: {e}", exc_info=True)
+            logger.error(
+                "voice_pipeline.failed error_type=%s",
+                type(e).__name__, exc_info=True,
+            )
             return _build_twiml_response(
                 "❌ Sorry, I had trouble processing that voice memo. Please try again."
             )
@@ -428,7 +509,10 @@ async def whatsapp_webhook(
                 child_context=child_context,
             )
         except Exception as e:
-            logger.error(f"Extraction from text failed: {e}", exc_info=True)
+            logger.error(
+                "text_extraction.failed error_type=%s",
+                type(e).__name__, exc_info=True,
+            )
             return _build_twiml_response(
                 "❌ Sorry, I had trouble processing that message. Please try again."
             )
@@ -484,7 +568,7 @@ async def whatsapp_webhook(
                     caption=caption,
                     content_type="image/jpeg",
                 )
-                logger.info(f"Photo saved for {child_context} (child_id={child.id})")
+                logger.info("photo.saved child_id=%s", child.id)
                 msg = f"📷 Photo saved for {child_context}."
                 if caption:
                     msg += f' Caption: "{caption}"'
@@ -509,7 +593,10 @@ async def whatsapp_webhook(
                 )
 
         except Exception as e:
-            logger.error(f"Photo processing failed: {e}", exc_info=True)
+            logger.error(
+                "photo_pipeline.failed error_type=%s",
+                type(e).__name__, exc_info=True,
+            )
             return _build_twiml_response(
                 "❌ Sorry, I had trouble processing that photo. Please try again."
             )
