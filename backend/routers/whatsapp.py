@@ -33,6 +33,7 @@ from backend.utils.media import delete_twilio_media, download_twilio_media
 from backend.utils.photo import build_pending_s3_key, build_photo_s3_key, strip_exif
 from backend.utils.s3 import delete_photo as delete_s3_object
 from backend.utils.s3 import download_from_s3, upload_photo
+from backend.utils.twilio_security import verify_twilio_signature
 from schemas.events import BaseEvent
 
 logger = logging.getLogger(__name__)
@@ -233,7 +234,7 @@ async def _process_and_persist_events(
     return _build_twiml_response(msg)
 
 
-@router.post("/whatsapp")
+@router.post("/whatsapp", dependencies=[Depends(verify_twilio_signature)])
 async def whatsapp_webhook(
     From: str = Form(""),
     Body: str = Form(""),
