@@ -4,6 +4,9 @@ import './index.css'
 import App from './App.jsx'
 import ParentPortal from './portals/parent/ParentPortal.jsx'
 import ConsentPage from './portals/ConsentPortal/ConsentPage.jsx'
+import { initSentry } from './sentry.js'
+
+initSentry();
 
 function Router() {
   const path = window.location.pathname;

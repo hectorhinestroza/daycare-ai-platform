@@ -66,8 +66,27 @@ Required environment variables (production):
 - `OPENAI_API_KEY`, `OPENAI_ZERO_RETENTION_CONFIRMED`
 - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`
 - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_BUCKET`, `AWS_S3_REGION`
-- `SENTRY_DSN` — leave empty until Sentry is provisioned (init becomes a no-op)
 - `RESEND_API_KEY` — for consent magic-link email
+
+### Sentry (two DSNs — one per platform)
+
+Sentry uses one project per platform, so we have two DSNs. Both are stored
+in Railway env vars (never in git). Empty values make the SDK init a no-op.
+
+| Variable | Set on | Project type |
+|---|---|---|
+| `SENTRY_DSN` | backend Railway service | Python / FastAPI |
+| `VITE_SENTRY_DSN` | frontend Railway service | React (Vite reads at build time) |
+
+Both clients run `before_send` / `beforeSend` PII scrubbers
+(`backend/utils/safe_logging.py::pii_scrubber` and
+`frontend/console/src/sentry.js::piiScrubber`) that redact known PII
+fields (`child_name`, `transcript`, `body`, `caption`, etc.) before any
+event leaves the process. We override Sentry's `sendDefaultPii` to
+`false` on both sides so IPs, headers, and request bodies aren't auto-
+collected.
+
+When rotating DSNs, update Railway only — no code change needed.
 
 Phase 2 will add: `PARENT_LINK_SECRET` (for signed bookmark tokens).
 
