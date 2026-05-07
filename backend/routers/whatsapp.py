@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Dict, Optional
 
 from fastapi import APIRouter, Depends, Form, Response
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from backend.config import get_settings
@@ -50,6 +51,43 @@ def _build_twiml_response(message: str) -> Response:
     <Message>{message}</Message>
 </Response>"""
     return Response(content=twiml, media_type="application/xml")
+
+
+def _build_empty_twiml() -> Response:
+    """Empty TwiML — used for retries we've already processed (no double-reply to teacher)."""
+    return Response(
+        content='<?xml version="1.0" encoding="UTF-8"?><Response/>',
+        media_type="application/xml",
+    )
+
+
+def _claim_message_sid(db: Session, message_sid: str) -> bool:
+    """Atomically claim a Twilio MessageSid.
+
+    Returns True if this is the first time we've seen the SID (caller should
+    process the message); False if the SID was already processed (caller should
+    short-circuit with an empty TwiML).
+
+    Commits the claim row immediately so a crash mid-processing doesn't leave
+    us re-running the pipeline on the next Twilio retry.
+    """
+    if not message_sid:
+        # Twilio always sends MessageSid, but be defensive: if missing, don't
+        # block processing — just skip dedup.
+        return True
+
+    # CURRENT_TIMESTAMP is portable across Postgres and SQLite (used in tests).
+    row = db.execute(
+        text(
+            "INSERT INTO processed_messages (message_sid, processed_at) "
+            "VALUES (:sid, CURRENT_TIMESTAMP) "
+            "ON CONFLICT (message_sid) DO NOTHING "
+            "RETURNING message_sid"
+        ),
+        {"sid": message_sid},
+    ).fetchone()
+    db.commit()
+    return row is not None
 
 
 def _get_command_context(phone: str) -> dict:
@@ -218,6 +256,11 @@ async def whatsapp_webhook(
     phone = From.replace("whatsapp:", "").strip()
     body = Body.strip()
     num_media = int(NumMedia)
+
+    # Dedup Twilio retries before doing any work.
+    if not _claim_message_sid(db, MessageSid):
+        logger.info(f"webhook.duplicate_message message_sid={MessageSid}")
+        return _build_empty_twiml()
 
     logger.warning(
         f"=== INCOMING WHATSAPP ===\n  From: {phone}\n  Body: '{body}'\n  NumMedia: {num_media}"

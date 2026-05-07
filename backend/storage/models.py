@@ -422,6 +422,33 @@ class ParentalConsent(Base):
     )
 
 
+# ─── Processed Messages (Twilio dedup) ───────────
+
+
+class ProcessedMessage(Base):
+    """Dedup ledger for Twilio webhook retries.
+
+    Twilio retries failed webhook deliveries — without this table, a single
+    voice memo can be processed multiple times. Insert ON CONFLICT DO NOTHING
+    at the top of the webhook returns NULL when the SID has already been seen.
+
+    Rows are short-lived (~7 days) and cleaned by a nightly scheduler job.
+    """
+
+    __tablename__ = "processed_messages"
+
+    message_sid = Column(Text, primary_key=True)
+    processed_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        Index("idx_processed_messages_processed_at", "processed_at"),
+    )
+
+
 # ─── Pending Consent Queue ───────────────────────
 
 

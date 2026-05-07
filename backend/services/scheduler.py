@@ -5,17 +5,20 @@ Jobs:
    center's local time is 5 PM on a weekday — if so, generates EOD narratives.
 2. Pending photo cleanup: Runs every 10 minutes. Deletes pending photos that
    have passed their 30-minute expiry (S3 object + DB row).
+3. Processed-messages cleanup: Runs nightly. Deletes Twilio dedup ledger
+   rows older than 7 days (Twilio's retry window is much shorter).
 
 Registered once in main.py lifespan; shuts down cleanly on app exit.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
+from sqlalchemy import text
 
 from backend.services.narrative import generate_narrative
 from backend.storage.database import SessionLocal
@@ -102,6 +105,32 @@ async def _generate_all_centers() -> None:
         )
 
 
+async def _cleanup_processed_messages() -> None:
+    """Delete Twilio dedup ledger rows older than 7 days.
+
+    Twilio retries within ~1 day; 7 days gives a comfortable safety margin
+    while keeping the table small.
+    """
+    db = SessionLocal()
+    try:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+        result = db.execute(
+            text("DELETE FROM processed_messages WHERE processed_at < :cutoff"),
+            {"cutoff": cutoff},
+        )
+        db.commit()
+        if result.rowcount:
+            logger.info(f"Scheduler: cleaned up {result.rowcount} processed_messages rows")
+    except Exception as e:
+        logger.error(f"Scheduler: processed_messages cleanup crashed: {e}", exc_info=True)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
 async def _cleanup_expired_pending_photos() -> None:
     """Delete pending photos that have passed their 30-minute expiry."""
     db = SessionLocal()
@@ -152,6 +181,18 @@ def start_scheduler() -> AsyncIOScheduler:
         replace_existing=True,
     )
 
+    # Clean up old Twilio dedup ledger rows nightly at 03:00 UTC
+    scheduler.add_job(
+        _cleanup_processed_messages,
+        CronTrigger(hour=3, minute=0),
+        id="processed_messages_cleanup",
+        name="Processed-messages cleanup — drops dedup rows older than 7 days",
+        replace_existing=True,
+    )
+
     scheduler.start()
-    logger.info("Scheduler started — EOD narratives (hourly) + pending photo cleanup (every 10 min)")
+    logger.info(
+        "Scheduler started — EOD narratives (hourly), pending photo cleanup "
+        "(every 10 min), processed-messages cleanup (nightly 03:00 UTC)"
+    )
     return scheduler
