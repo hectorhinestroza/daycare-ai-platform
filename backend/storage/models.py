@@ -422,6 +422,29 @@ class ParentalConsent(Base):
     )
 
 
+# ─── Revoked Token Nonces ───────────────────────
+
+
+class RevokedTokenNonce(Base):
+    """Per-subject token revocation list.
+
+    Each row marks one (subject, nonce) pair as invalid. Subject is the
+    parent_contact_id / teacher_id / admin_id from the token payload.
+    Stored as text (not UUID) so a single table covers all three roles
+    without relational coupling.
+    """
+
+    __tablename__ = "revoked_token_nonces"
+
+    sub_id = Column(Text, primary_key=True)
+    nonce = Column(Text, primary_key=True)
+    revoked_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+
 # ─── Processed Messages (Twilio dedup) ───────────
 
 

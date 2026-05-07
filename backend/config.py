@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     sentry_dsn: str = ""
     sentry_traces_sample_rate: float = 0.0
 
+    # Auth token signing secret. Used to sign every bearer token (parent,
+    # teacher, director). Generate with:
+    #   python -c "import secrets; print(secrets.token_urlsafe(32))"
+    # Empty in dev/test → token issuance refuses, verification returns None.
+    auth_token_secret: str = ""
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
