@@ -178,12 +178,16 @@ async def _process_and_persist_events(
         else:
             recognized_events.append(base_event)
 
-    # 1. Persist valid events immediately
+    # 1. Persist valid events immediately (consent-gated per child)
+    settings = get_settings()
+    blocked_count = 0
     for base_event in recognized_events:
         if getattr(base_event, "applies_to_all", False):
-            # Group event — fan out to all active children in the teacher's room
+            # Group event — fan out to all active children in the teacher's room.
+            # The fan-out function gates each child individually.
             created = fan_out_batch_event(
-                db, teacher.center_id, teacher.id, base_event
+                db, teacher.center_id, teacher.id, base_event,
+                environment=settings.environment,
             )
             batch_fan_out_count += len(created)
             logger.info(
@@ -191,6 +195,24 @@ async def _process_and_persist_events(
             )
         else:
             child = get_child_by_name(db, teacher.center_id, base_event.child_name)
+            if child is not None:
+                # Consent gate: in production, blocks events for children without
+                # active parental consent and queues them in pending_consent_queue.
+                gated = get_child_for_processing(
+                    child_id=child.id,
+                    center_id=teacher.center_id,
+                    db=db,
+                    environment=settings.environment,
+                    pipeline_stage="event_extraction",
+                    raw_event_ref=base_event.model_dump_json(),
+                )
+                if gated is None:
+                    blocked_count += 1
+                    logger.info(
+                        f"consent_gate.blocked_event child_id={child.id} "
+                        f"center_id={teacher.center_id}"
+                    )
+                    continue
             child_id = child.id if child else None
             create_event_from_base(db, base_event, teacher_id=teacher.id, child_id=child_id)
 
