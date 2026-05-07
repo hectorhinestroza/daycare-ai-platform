@@ -140,7 +140,8 @@ async def extract_events(
         )
 
         raw_content = response.choices[0].message.content
-        logger.debug(f"GPT-4o raw response: {raw_content}")
+        # Do NOT log raw_content — it contains child names extracted from the
+        # transcript (full PII). Logging shape only.
         parsed = json.loads(raw_content)
 
         # Handle all possible GPT-4o response formats:
@@ -156,7 +157,11 @@ async def extract_events(
         elif isinstance(parsed, dict) and "event_type" in parsed:
             raw_events = [parsed]
         else:
-            logger.warning(f"Unexpected response structure: {parsed}")
+            # Don't log `parsed` — it contains child-named events.
+            logger.warning(
+                "extraction.unexpected_response_shape parsed_type=%s",
+                type(parsed).__name__,
+            )
             raw_events = []
 
         # Validate each event against Pydantic schema
@@ -197,15 +202,27 @@ async def extract_events(
                 )
                 validated_events.append(event)
             except (ValidationError, KeyError, ValueError) as e:
-                logger.warning(f"Dropped malformed event: {type(e).__name__}: {e} — raw: {raw_event}")
+                # Don't log `raw_event` — it contains the child name and details.
+                logger.warning(
+                    "extraction.event_dropped error_type=%s",
+                    type(e).__name__,
+                )
                 continue
 
-        logger.info(f"Extracted {len(validated_events)} valid events from {len(raw_events)} raw events")
+        logger.info(
+            "extraction.completed validated=%d raw=%d unrecognized=%d",
+            len(validated_events), len(raw_events), len(unrecognized_names),
+        )
         return validated_events, unrecognized_names
 
-    except json.JSONDecodeError as e:
-        logger.error(f"GPT-4o returned invalid JSON: {e}")
-        raise ValueError(f"LLM returned invalid JSON: {e}") from e
+    except json.JSONDecodeError:
+        # JSONDecodeError messages can include a snippet of the offending JSON,
+        # which contains child names — log type only, not the message.
+        logger.error("extraction.invalid_json")
+        raise ValueError("LLM returned invalid JSON") from None
     except Exception as e:
-        logger.error(f"Event extraction failed: {type(e).__name__}: {e}", exc_info=True)
-        raise e
+        # exc_info=True is fine: the traceback structure is captured by Sentry's
+        # before_send scrubber (frame vars are redacted). Avoid `{e}` in the
+        # format string since OpenAI errors can echo prompt content.
+        logger.error("extraction.failed error_type=%s", type(e).__name__, exc_info=True)
+        raise

@@ -2,6 +2,7 @@
 
 import asyncio
 import gc
+import hashlib
 import json
 import logging
 import uuid
@@ -43,6 +44,11 @@ router = APIRouter(prefix="/webhook", tags=["whatsapp"])
 # In-memory context store for /child and /classroom commands
 # Key: phone number, Value: dict
 _command_context: Dict[str, dict] = {}
+
+
+def _phone_hash(phone: str) -> str:
+    """Short stable hash of a phone number for log correlation (no PII)."""
+    return hashlib.sha256((phone or "").encode()).hexdigest()[:8]
 
 
 def _build_twiml_response(message: str) -> Response:
@@ -285,8 +291,9 @@ async def whatsapp_webhook(
         logger.info(f"webhook.duplicate_message message_sid={MessageSid}")
         return _build_empty_twiml()
 
-    logger.warning(
-        f"=== INCOMING WHATSAPP ===\n  From: {phone}\n  Body: '{body}'\n  NumMedia: {num_media}"
+    logger.info(
+        "webhook.received phone_hash=%s body_length=%d num_media=%d message_sid=%s",
+        _phone_hash(phone), len(body), num_media, MessageSid,
     )
 
     # 1. Handle commands first (no DB lookup needed for parsing)
@@ -306,7 +313,7 @@ async def whatsapp_webhook(
     # 2. Look up Teacher from DB
     teacher = get_teacher_by_phone(db, phone)
     if not teacher:
-        logger.warning(f"Unregistered phone number hit webhook: {phone}")
+        logger.warning("webhook.teacher_unknown phone_hash=%s", _phone_hash(phone))
         if command_reply:
             # Still return command reply for unregistered users
             return _build_twiml_response(command_reply)
@@ -338,7 +345,8 @@ async def whatsapp_webhook(
                         )
                         if child_record is None:
                             logger.warning(
-                                f"No consent for child {child.id} — discarding pending photo {p.id}"
+                                "consent_gate.blocked_pending_photo child_id=%s pending_photo_id=%s",
+                                child.id, p.id,
                             )
                             delete_s3_object(p.s3_temp_key)
                             delete_pending_photo(db, p.id)
@@ -359,7 +367,10 @@ async def whatsapp_webhook(
                         delete_pending_photo(db, p.id)
                         processed += 1
                     except Exception as e:
-                        logger.error(f"Failed to resolve pending photo {p.id}: {e}", exc_info=True)
+                        logger.error(
+                            "photo.pending_resolve_failed pending_photo_id=%s error_type=%s",
+                            p.id, type(e).__name__, exc_info=True,
+                        )
 
                 if processed:
                     reply += f"\n📷 {processed} photo(s) saved for {child_context}."
@@ -404,7 +415,8 @@ async def whatsapp_webhook(
                         db.delete(fb)
                     except Exception as e:
                         logger.error(
-                            f"Failed to restore pending event: {e}"
+                            "pending_event.restore_failed pending_event_id=%s error_type=%s",
+                            fb.id, type(e).__name__,
                         )
 
                 db.commit()
@@ -464,7 +476,10 @@ async def whatsapp_webhook(
             )
 
         except Exception as e:
-            logger.error(f"Voice pipeline failed: {e}", exc_info=True)
+            logger.error(
+                "voice_pipeline.failed error_type=%s",
+                type(e).__name__, exc_info=True,
+            )
             return _build_twiml_response(
                 "❌ Sorry, I had trouble processing that voice memo. Please try again."
             )
@@ -494,7 +509,10 @@ async def whatsapp_webhook(
                 child_context=child_context,
             )
         except Exception as e:
-            logger.error(f"Extraction from text failed: {e}", exc_info=True)
+            logger.error(
+                "text_extraction.failed error_type=%s",
+                type(e).__name__, exc_info=True,
+            )
             return _build_twiml_response(
                 "❌ Sorry, I had trouble processing that message. Please try again."
             )
@@ -550,7 +568,7 @@ async def whatsapp_webhook(
                     caption=caption,
                     content_type="image/jpeg",
                 )
-                logger.info(f"Photo saved for {child_context} (child_id={child.id})")
+                logger.info("photo.saved child_id=%s", child.id)
                 msg = f"📷 Photo saved for {child_context}."
                 if caption:
                     msg += f' Caption: "{caption}"'
@@ -575,7 +593,10 @@ async def whatsapp_webhook(
                 )
 
         except Exception as e:
-            logger.error(f"Photo processing failed: {e}", exc_info=True)
+            logger.error(
+                "photo_pipeline.failed error_type=%s",
+                type(e).__name__, exc_info=True,
+            )
             return _build_twiml_response(
                 "❌ Sorry, I had trouble processing that photo. Please try again."
             )

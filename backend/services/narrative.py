@@ -174,8 +174,8 @@ async def generate_narrative(
     )
 
     logger.info(
-        f"Generating EOD narrative for {child.name} ({child_id}) on {target_date} "
-        f"— {len(events)} events"
+        "narrative.generating child_id=%s date=%s events=%d",
+        child_id, target_date, len(events),
     )
 
     try:
@@ -212,9 +212,12 @@ async def generate_narrative(
             "photo_captions": photo_captions,
         }
 
-    except json.JSONDecodeError as e:
-        logger.error(f"GPT-4o returned invalid JSON for narrative: {e}")
-        raise ValueError("Narrative generation returned invalid JSON") from e
+    except json.JSONDecodeError:
+        logger.error("narrative.invalid_json child_id=%s", child_id)
+        raise ValueError("Narrative generation returned invalid JSON") from None
     except Exception as e:
-        logger.error(f"Narrative generation failed: {type(e).__name__}: {e}", exc_info=True)
+        logger.error(
+            "narrative.failed child_id=%s error_type=%s",
+            child_id, type(e).__name__, exc_info=True,
+        )
         raise

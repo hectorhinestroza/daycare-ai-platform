@@ -83,13 +83,14 @@ async def _generate_all_centers() -> None:
                     )
                     generated += 1
                     logger.info(
-                        f"Scheduler: generated narrative for {child.name} ({child.id}) "
-                        f"on {target_date} — tone={result['tone']}"
+                        "scheduler.narrative_generated child_id=%s date=%s tone=%s",
+                        child.id, target_date, result["tone"],
                     )
                 except Exception as e:
                     failed += 1
                     logger.error(
-                        f"Scheduler: failed narrative for {child.name} ({child.id}): {e}",
+                        "scheduler.narrative_failed child_id=%s error_type=%s",
+                        child.id, type(e).__name__,
                         exc_info=True,
                     )
 

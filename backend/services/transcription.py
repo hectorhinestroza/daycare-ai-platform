@@ -47,5 +47,7 @@ async def transcribe_audio(audio_bytes: bytes, filename: str = "audio.ogg") -> s
         return transcript_text
 
     except Exception as e:
-        logger.error(f"Transcription failed: {e}")
+        # Don't echo the exception message — Whisper errors are usually generic
+        # but defensive scrubbing keeps prod logs PII-free even on edge cases.
+        logger.error("transcription.failed error_type=%s", type(e).__name__)
         raise
