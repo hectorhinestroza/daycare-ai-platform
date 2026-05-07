@@ -17,12 +17,11 @@ from datetime import datetime, time, timedelta, timezone
 from typing import List
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from openai import AsyncOpenAI
 from sqlalchemy import Date, and_, cast, func, or_
 from sqlalchemy.orm import Session
 
-from backend.config import get_settings
 from backend.storage.models import Center, Child, Event
+from backend.utils.openai_client import get_openai_client
 from backend.utils.openai_wrapper import call_openai_async_with_logging
 
 logger = logging.getLogger(__name__)
@@ -165,8 +164,7 @@ async def generate_narrative(
         }
 
     # ── 4. Call GPT-4o ────────────────────────────────────────
-    settings = get_settings()
-    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    client = get_openai_client()
 
     events_block = _build_events_block(events)
     user_prompt = (

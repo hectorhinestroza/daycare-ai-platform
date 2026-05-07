@@ -5,7 +5,7 @@ kudos, observation, health_check, absence, note, incident, medication.
 """
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -17,10 +17,10 @@ class TestExtractEvents:
     """Test GPT-4o structured event extraction."""
 
     @pytest.mark.asyncio
-    @patch("backend.services.extraction.OpenAI")
-    async def test_single_food_event(self, mock_openai_class):
+    @patch("backend.services.extraction.get_openai_client")
+    async def test_single_food_event(self, mock_get_client):
         mock_client = MagicMock()
-        mock_openai_class.return_value = mock_client
+        mock_get_client.return_value = mock_client
 
         mock_response = MagicMock()
         mock_response.choices[0].message.content = json.dumps(
@@ -36,7 +36,7 @@ class TestExtractEvents:
                 ]
             }
         )
-        mock_client.chat.completions.create.return_value = mock_response
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         events, _ = await extract_events(
             transcript="Jason ate mac and cheese for lunch",
@@ -54,10 +54,10 @@ class TestExtractEvents:
         assert events[0].needs_review is False
 
     @pytest.mark.asyncio
-    @patch("backend.services.extraction.OpenAI")
-    async def test_multiple_events_extraction(self, mock_openai_class):
+    @patch("backend.services.extraction.get_openai_client")
+    async def test_multiple_events_extraction(self, mock_get_client):
         mock_client = MagicMock()
-        mock_openai_class.return_value = mock_client
+        mock_get_client.return_value = mock_client
 
         mock_response = MagicMock()
         mock_response.choices[0].message.content = json.dumps(
@@ -69,7 +69,7 @@ class TestExtractEvents:
                 ]
             }
         )
-        mock_client.chat.completions.create.return_value = mock_response
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         events, _ = await extract_events("Jason had lunch, napped. Emma shared toys.", "c1", db=MagicMock())
 
@@ -81,11 +81,11 @@ class TestExtractEvents:
         assert all(e.review_tier == "teacher" for e in events)
 
     @pytest.mark.asyncio
-    @patch("backend.services.extraction.OpenAI")
-    async def test_low_confidence_goes_to_director(self, mock_openai_class):
+    @patch("backend.services.extraction.get_openai_client")
+    async def test_low_confidence_goes_to_director(self, mock_get_client):
         """Low confidence events go to director queue."""
         mock_client = MagicMock()
-        mock_openai_class.return_value = mock_client
+        mock_get_client.return_value = mock_client
 
         mock_response = MagicMock()
         mock_response.choices[0].message.content = json.dumps(
@@ -95,7 +95,7 @@ class TestExtractEvents:
                 ]
             }
         )
-        mock_client.chat.completions.create.return_value = mock_response
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         events, _ = await extract_events("someone took a nap", "c1", db=MagicMock())
 
@@ -106,11 +106,11 @@ class TestExtractEvents:
         assert events[0].needs_review is True
 
     @pytest.mark.asyncio
-    @patch("backend.services.extraction.OpenAI")
-    async def test_incident_always_director(self, mock_openai_class):
+    @patch("backend.services.extraction.get_openai_client")
+    async def test_incident_always_director(self, mock_get_client):
         """Incidents ALWAYS go to director regardless of confidence."""
         mock_client = MagicMock()
-        mock_openai_class.return_value = mock_client
+        mock_get_client.return_value = mock_client
 
         mock_response = MagicMock()
         mock_response.choices[0].message.content = json.dumps(
@@ -120,7 +120,7 @@ class TestExtractEvents:
                 ]
             }
         )
-        mock_client.chat.completions.create.return_value = mock_response
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         events, _ = await extract_events("Jason fell and scraped his knee", "c1", db=MagicMock())
 
@@ -131,11 +131,11 @@ class TestExtractEvents:
         assert events[0].needs_director_review is True
 
     @pytest.mark.asyncio
-    @patch("backend.services.extraction.OpenAI")
-    async def test_medication_always_director(self, mock_openai_class):
+    @patch("backend.services.extraction.get_openai_client")
+    async def test_medication_always_director(self, mock_get_client):
         """Medication ALWAYS goes to director regardless of confidence."""
         mock_client = MagicMock()
-        mock_openai_class.return_value = mock_client
+        mock_get_client.return_value = mock_client
 
         mock_response = MagicMock()
         mock_response.choices[0].message.content = json.dumps(
@@ -145,7 +145,7 @@ class TestExtractEvents:
                 ]
             }
         )
-        mock_client.chat.completions.create.return_value = mock_response
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         events, _ = await extract_events("Gave Emma her allergy medicine at 2pm", "c1", db=MagicMock())
 
@@ -155,10 +155,10 @@ class TestExtractEvents:
         assert events[0].needs_director_review is True
 
     @pytest.mark.asyncio
-    @patch("backend.services.extraction.OpenAI")
-    async def test_potty_event(self, mock_openai_class):
+    @patch("backend.services.extraction.get_openai_client")
+    async def test_potty_event(self, mock_get_client):
         mock_client = MagicMock()
-        mock_openai_class.return_value = mock_client
+        mock_get_client.return_value = mock_client
 
         mock_response = MagicMock()
         mock_response.choices[0].message.content = json.dumps(
@@ -168,7 +168,7 @@ class TestExtractEvents:
                 ]
             }
         )
-        mock_client.chat.completions.create.return_value = mock_response
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         events, _ = await extract_events("Successful potty for Sarah", "c1", db=MagicMock())
 
@@ -177,10 +177,10 @@ class TestExtractEvents:
         assert events[0].review_tier == "teacher"  # low risk
 
     @pytest.mark.asyncio
-    @patch("backend.services.extraction.OpenAI")
-    async def test_health_check_event(self, mock_openai_class):
+    @patch("backend.services.extraction.get_openai_client")
+    async def test_health_check_event(self, mock_get_client):
         mock_client = MagicMock()
-        mock_openai_class.return_value = mock_client
+        mock_get_client.return_value = mock_client
 
         mock_response = MagicMock()
         mock_response.choices[0].message.content = json.dumps(
@@ -195,7 +195,7 @@ class TestExtractEvents:
                 ]
             }
         )
-        mock_client.chat.completions.create.return_value = mock_response
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         events, _ = await extract_events("Emma had a temp of 99.2", "c1", db=MagicMock())
 
@@ -204,15 +204,15 @@ class TestExtractEvents:
         assert events[0].review_tier == "teacher"
 
     @pytest.mark.asyncio
-    @patch("backend.services.extraction.OpenAI")
-    async def test_temperature_zero(self, mock_openai_class):
+    @patch("backend.services.extraction.get_openai_client")
+    async def test_temperature_zero(self, mock_get_client):
         """Verify temperature=0 is always used (deterministic)."""
         mock_client = MagicMock()
-        mock_openai_class.return_value = mock_client
+        mock_get_client.return_value = mock_client
 
         mock_response = MagicMock()
         mock_response.choices[0].message.content = json.dumps({"events": []})
-        mock_client.chat.completions.create.return_value = mock_response
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         await extract_events("test", "c1", db=MagicMock())
 
@@ -220,17 +220,17 @@ class TestExtractEvents:
         assert call_kwargs.kwargs["temperature"] == 0
 
     @pytest.mark.asyncio
-    @patch("backend.services.extraction.OpenAI")
-    async def test_child_name_context(self, mock_openai_class):
+    @patch("backend.services.extraction.get_openai_client")
+    async def test_child_name_context(self, mock_get_client):
         """Verify child_name context is passed to GPT-4o."""
         mock_client = MagicMock()
-        mock_openai_class.return_value = mock_client
+        mock_get_client.return_value = mock_client
 
         mock_response = MagicMock()
         mock_response.choices[0].message.content = json.dumps(
             {"events": [{"event_type": "food", "child_name": "Jason", "confidence_score": 0.9}]}
         )
-        mock_client.chat.completions.create.return_value = mock_response
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         await extract_events("had lunch", "c1", db=MagicMock(), child_name="Jason")
 
@@ -244,11 +244,11 @@ class TestExtractEvents:
             await extract_events("", "c1", db=MagicMock())
 
     @pytest.mark.asyncio
-    @patch("backend.services.extraction.OpenAI")
-    async def test_malformed_event_skipped(self, mock_openai_class):
+    @patch("backend.services.extraction.get_openai_client")
+    async def test_malformed_event_skipped(self, mock_get_client):
         """Malformed events are skipped, valid ones still returned."""
         mock_client = MagicMock()
-        mock_openai_class.return_value = mock_client
+        mock_get_client.return_value = mock_client
 
         mock_response = MagicMock()
         mock_response.choices[0].message.content = json.dumps(
@@ -259,7 +259,7 @@ class TestExtractEvents:
                 ]
             }
         )
-        mock_client.chat.completions.create.return_value = mock_response
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         events, _ = await extract_events("test transcript", "c1", db=MagicMock())
 
@@ -267,11 +267,11 @@ class TestExtractEvents:
         assert events[0].child_name == "Jason"
 
     @pytest.mark.asyncio
-    @patch("backend.services.extraction.OpenAI")
-    async def test_default_confidence_when_missing(self, mock_openai_class):
+    @patch("backend.services.extraction.get_openai_client")
+    async def test_default_confidence_when_missing(self, mock_get_client):
         """When GPT-4o omits confidence_score, default to 0.5 (director queue)."""
         mock_client = MagicMock()
-        mock_openai_class.return_value = mock_client
+        mock_get_client.return_value = mock_client
 
         mock_response = MagicMock()
         mock_response.choices[0].message.content = json.dumps(
@@ -281,7 +281,7 @@ class TestExtractEvents:
                 ]
             }
         )
-        mock_client.chat.completions.create.return_value = mock_response
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
         events, _ = await extract_events("Jason ate lunch", "c1", db=MagicMock())
 

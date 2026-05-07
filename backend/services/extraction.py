@@ -10,12 +10,11 @@ import logging
 from typing import List, Optional, Tuple
 from uuid import UUID, uuid4
 
-from openai import OpenAI
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from backend.config import get_settings
-from backend.utils.openai_wrapper import call_openai_with_logging
+from backend.utils.openai_client import get_openai_client
+from backend.utils.openai_wrapper import call_openai_async_with_logging
 from schemas.events import (
     ALWAYS_REVIEW_TYPES,
     BaseEvent,
@@ -109,8 +108,7 @@ async def extract_events(
     if not transcript.strip():
         raise ValueError("Empty transcript received")
 
-    settings = get_settings()
-    client = OpenAI(api_key=settings.openai_api_key)
+    client = get_openai_client()
 
     user_prompt = f"Transcript: {transcript}"
     if child_name:
@@ -126,7 +124,7 @@ async def extract_events(
     logger.info(f"Extracting events from transcript ({len(transcript)} chars)")
 
     try:
-        response = call_openai_with_logging(
+        response = await call_openai_async_with_logging(
             client=client,
             db=db,
             center_id=center_id,

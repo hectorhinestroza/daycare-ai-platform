@@ -3,16 +3,9 @@
 import io
 import logging
 
-from openai import OpenAI
-
-from backend.config import get_settings
+from backend.utils.openai_client import get_openai_client
 
 logger = logging.getLogger(__name__)
-
-
-def get_openai_client() -> OpenAI:
-    settings = get_settings()
-    return OpenAI(api_key=settings.openai_api_key)
 
 
 async def transcribe_audio(audio_bytes: bytes, filename: str = "audio.ogg") -> str:
@@ -31,8 +24,7 @@ async def transcribe_audio(audio_bytes: bytes, filename: str = "audio.ogg") -> s
     if not audio_bytes:
         raise ValueError("Empty audio data received")
 
-    settings = get_settings()
-    client = OpenAI(api_key=settings.openai_api_key)
+    client = get_openai_client()
 
     logger.info(f"Transcribing audio: {filename} ({len(audio_bytes)} bytes)")
 
@@ -40,7 +32,7 @@ async def transcribe_audio(audio_bytes: bytes, filename: str = "audio.ogg") -> s
         audio_file = io.BytesIO(audio_bytes)
         audio_file.name = filename
 
-        transcript = client.audio.transcriptions.create(
+        transcript = await client.audio.transcriptions.create(
             model="whisper-1",
             file=audio_file,
             response_format="text",
