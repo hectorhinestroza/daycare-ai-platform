@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import TeacherQueue from './portals/teacher/TeacherQueue';
 import DirectorDashboard from './portals/director/DirectorDashboard';
 import HistoryView from './features/events/HistoryView';
@@ -39,15 +39,20 @@ function App({ forcedRole, centerId: propscenterId }) {
     }
   }, [role, view]);
 
-  // Toast Helpers
-  function addToast(message, type = 'success') {
+  // Toast helpers — memoized so they're stable across renders. Children
+  // (CenterView, ChildrenPanel, etc.) put addToast in useCallback/useEffect
+  // dep arrays. Without useCallback here, every App render created a fresh
+  // function, invalidating those memos and re-firing fetches. On error
+  // toasts that retriggered: state update → re-render → new addToast →
+  // child re-fetches → loop. Caused the ~10 req/s 403 storm.
+  const addToast = useCallback((message, type = 'success') => {
     const id = Date.now();
     setToasts((prev) => [...prev, { id, message, type }]);
-  }
+  }, []);
 
-  function removeToast(id) {
+  const removeToast = useCallback((id) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
-  }
+  }, []);
 
   const nav = role === 'director' ? DIRECTOR_NAV : TEACHER_NAV;
   const headerTitle = role === 'director' ? 'Director Dashboard' : 'Teacher Console';

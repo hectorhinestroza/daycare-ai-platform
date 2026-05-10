@@ -1,24 +1,49 @@
 // Authenticated fetch wrapper.
 //
-// Reads the bearer token from localStorage and injects it into every API
-// call. On 401, wipes the token and redirects the user to /app so the
-// dispatcher can show the "access expired" message.
+// Token storage: sessionStorage, not localStorage.
+// Why: localStorage is shared across every browser tab on the same origin.
+// Opening a parent bootstrap URL in a new tab would overwrite the
+// director's token in localStorage and immediately break the director
+// tab — every subsequent API call hit a 403 because the (now parent)
+// token didn't match the director's role guard. sessionStorage is
+// per-tab, so director and parent tabs each keep their own auth context
+// without clobbering each other.
 //
-// Usage:
-//   apiFetch('/api/events/pending/teacher/abc')
-//     → GET with Authorization header
-//   apiFetch('/api/events/abc/xyz/approve', { method: 'POST' })
+// Persistence in PWA mode: each home-screen launch is its own session
+// and starts with empty sessionStorage, but the dynamic manifest's
+// start_url is /app?token=<theirs> — the dispatcher captures the token
+// from the URL on every cold start, so PWA users never notice.
 //
-// All API call sites in api/index.js go through this wrapper.
+// Persistence in plain-browser mode: sessionStorage survives refresh
+// (F5) within the same tab. Closing the tab clears it — to come back,
+// the user re-opens their bootstrap URL.
 
 export const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 const TOKEN_KEY = 'dc_token';
 const ROLE_KEY = 'dc_role';
 
+// One-time migration: if a previous version stored the token in
+// localStorage, hoist it to sessionStorage on first read and clear the
+// old copy. After every active tab has gone through this once, no more
+// localStorage state remains.
+function migrateLegacyKey(key) {
+  try {
+    if (sessionStorage.getItem(key)) return;
+    const legacy = localStorage.getItem(key);
+    if (legacy) {
+      sessionStorage.setItem(key, legacy);
+      localStorage.removeItem(key);
+    }
+  } catch {
+    /* private mode, etc — silent */
+  }
+}
+
 export function getStoredToken() {
   try {
-    return localStorage.getItem(TOKEN_KEY);
+    migrateLegacyKey(TOKEN_KEY);
+    return sessionStorage.getItem(TOKEN_KEY);
   } catch {
     return null;
   }
@@ -26,16 +51,19 @@ export function getStoredToken() {
 
 export function setStoredToken(token) {
   try {
-    if (token) localStorage.setItem(TOKEN_KEY, token);
-    else localStorage.removeItem(TOKEN_KEY);
+    if (token) sessionStorage.setItem(TOKEN_KEY, token);
+    else sessionStorage.removeItem(TOKEN_KEY);
+    // Defensive: also clear any stale localStorage copy from older builds.
+    localStorage.removeItem(TOKEN_KEY);
   } catch {
-    /* localStorage unavailable — silent */
+    /* sessionStorage unavailable — silent */
   }
 }
 
 export function getCachedRole() {
   try {
-    return localStorage.getItem(ROLE_KEY);
+    migrateLegacyKey(ROLE_KEY);
+    return sessionStorage.getItem(ROLE_KEY);
   } catch {
     return null;
   }
@@ -43,8 +71,9 @@ export function getCachedRole() {
 
 export function setCachedRole(role) {
   try {
-    if (role) localStorage.setItem(ROLE_KEY, role);
-    else localStorage.removeItem(ROLE_KEY);
+    if (role) sessionStorage.setItem(ROLE_KEY, role);
+    else sessionStorage.removeItem(ROLE_KEY);
+    localStorage.removeItem(ROLE_KEY);
   } catch {
     /* silent */
   }
