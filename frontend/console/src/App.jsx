@@ -5,6 +5,7 @@ import HistoryView from './features/events/HistoryView';
 import ActivityLog from './features/events/ActivityLog';
 import CenterView from './features/center/CenterView';
 import Toast from './components/ui/Toast';
+import { getCachedRole } from './api/client.js';
 
 // Bottom nav config per role
 const TEACHER_NAV = [
@@ -20,13 +21,16 @@ const DIRECTOR_NAV = [
 ];
 
 function App({ forcedRole, centerId: propscenterId }) {
-  const [role, setRole] = useState(forcedRole || 'teacher');
+  // Role comes from the URL (forcedRole), then from the cached role on the
+  // last successful auth (set by the dispatcher). Default 'teacher' is a
+  // fallback for dev mode where the dispatcher never ran.
+  const initialRole = forcedRole || getCachedRole() || 'teacher';
+  const [role] = useState(initialRole);
   const [view, setView] = useState('pending');
   const [toasts, setToasts] = useState([]);
 
   const params = new URLSearchParams(window.location.search);
   const centerId = propscenterId || params.get('center') || '';
-  const isRouted = !!forcedRole;
 
   // Enforce role-based view access
   useEffect(() => {
@@ -54,14 +58,13 @@ function App({ forcedRole, centerId: propscenterId }) {
       {/* ── Top App Bar ── */}
       <header className="bg-surface/80 backdrop-blur-xl flex justify-between items-center w-full px-6 py-4 fixed top-0 z-50">
         <div className="flex items-center gap-3">
-          {/* Role avatar / switcher */}
-          <button
-            onClick={() => setRole(role === 'teacher' ? 'director' : 'teacher')}
-            title={`Switch to ${role === 'teacher' ? 'Director' : 'Teacher'} view`}
-            className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-primary font-semibold text-sm border border-outline-variant/5 hover:bg-surface-container-high transition-all active:scale-95"
+          {/* Role badge — non-interactive; real role comes from the auth token */}
+          <div
+            className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-primary font-semibold text-sm border border-outline-variant/5"
+            title={role === 'teacher' ? 'Teacher' : 'Director'}
           >
             {role === 'teacher' ? 'T' : 'D'}
-          </button>
+          </div>
           <div>
             <h1 className="font-headline text-xl font-semibold tracking-tight text-primary leading-tight">
               {headerTitle}
