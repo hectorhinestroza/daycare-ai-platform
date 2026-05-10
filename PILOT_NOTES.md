@@ -207,4 +207,32 @@ _Filled in by Phase 5. Placeholder._
 - Auth is HMAC-signed bearer tokens stored in localStorage (Phase 2).
   Vulnerable to XSS in theory; acceptable for pilot scale.
   Passkeys/WebAuthn deferred to v2.
+
+## Regenerating PWA icons
+
+Source of truth: `logo-organic-curator-1024.svg` at the repo root.
+Three PNG sizes ship in `frontend/console/public/icons/` (192, 512,
+512-maskable). To regenerate after the SVG changes:
+
+```bash
+# 1. Render the SVG to a 1024×1024 master via macOS sips
+sips -s format png --resampleWidth 1024 \
+  logo-organic-curator-1024.svg --out /tmp/logo-master.png
+
+# 2. Resize and emit the three PWA sizes (run from repo root)
+source venv/bin/activate && python -c "
+from PIL import Image
+import os
+src = Image.open('/tmp/logo-master.png').convert('RGBA')
+out = 'frontend/console/public/icons'
+src.resize((192, 192), Image.LANCZOS).save(os.path.join(out, 'icon-192.png'))
+src.resize((512, 512), Image.LANCZOS).save(os.path.join(out, 'icon-512.png'))
+# Maskable: Android safe-zone is inner 80%; shrink to 70% and pad with brand bg.
+BG = (0xfe, 0xf8, 0xf5, 255)
+maskable = Image.new('RGBA', (512, 512), BG)
+inner = src.resize((360, 360), Image.LANCZOS)
+maskable.paste(inner, ((512-360)//2, (512-360)//2), inner)
+maskable.save(os.path.join(out, 'icon-maskable-512.png'))
+"
+```
 - Privacy policy page is a stub until Phase 4
