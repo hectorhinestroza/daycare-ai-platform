@@ -18,4 +18,11 @@ RUN chmod +x start.sh
 
 EXPOSE 8080
 
+# Install curl for the HEALTHCHECK probe.
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD curl -fsS "http://localhost:${PORT:-8080}/health" >/dev/null || exit 1
+
 CMD ["./start.sh"]

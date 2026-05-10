@@ -1,5 +1,7 @@
 
 import logging
+import os
+import time
 from contextlib import asynccontextmanager
 from typing import Dict
 
@@ -8,6 +10,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 import backend.storage.models  # noqa: F401 — register all models with Base
+
+# Captured once at module load so /health can report uptime accurately.
+_APP_START_MONOTONIC = time.monotonic()
 
 # Configure structured logging
 logging.basicConfig(
@@ -116,12 +121,34 @@ async def root() -> Dict[str, str]:
 
 @app.get("/health")
 async def health() -> Dict:
-    """Health check — includes passive legal DPA status for observability.
+    """Health check.
 
-    Legal fields show False if env vars missing — a reminder, not a wall.
-    DPAs are a one-time founder action documented in README_LEGAL.md.
+    Reports:
+      - status: "ok" if the server is responding
+      - git_sha: the deployed commit, read from RAILWAY_GIT_COMMIT_SHA /
+        GIT_COMMIT_SHA / GIT_SHA env vars (whichever the deploy platform
+        sets), or "unknown" in dev
+      - uptime_seconds: monotonic seconds since module load — useful for
+        catching unexpected restarts
+      - extraction_disabled: surfaces the kill switch state so the
+        director can verify their flip took effect
+      - legal: passive DPA env-var status from startup/legal_checks
+
+    Returns 200 unconditionally. We don't ping the DB here — Railway's
+    HEALTHCHECK should fail fast on container-level issues, not on
+    transient DB blips.
     """
+    settings = get_settings()
+    git_sha = (
+        os.environ.get("RAILWAY_GIT_COMMIT_SHA")
+        or os.environ.get("GIT_COMMIT_SHA")
+        or os.environ.get("GIT_SHA")
+        or "unknown"
+    )
     return {
-        "status": "healthy",
+        "status": "ok",
+        "git_sha": git_sha,
+        "uptime_seconds": int(time.monotonic() - _APP_START_MONOTONIC),
+        "extraction_disabled": settings.extraction_disabled,
         "legal": get_legal_status_fields(),
     }
