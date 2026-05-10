@@ -223,6 +223,53 @@ def test_issue_parent_requires_child_ids(client, db_and_seeds):
 # ─── revoke ───────────────────────────────────────────────────
 
 
+# ─── manifest ─────────────────────────────────────────────────
+
+
+def test_manifest_returns_dynamic_start_url_for_director(client, db_and_seeds, monkeypatch):
+    monkeypatch.setenv("APP_BASE_URL", "https://console.example.com")
+    get_settings.cache_clear()
+
+    seeds = db_and_seeds
+    token, _ = generate_token(
+        role="director", sub=seeds["admin_id"], center_id=seeds["center_id"],
+        secret=SECRET,
+    )
+    r = client.get(f"/api/auth/manifest?token={token}")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("application/manifest+json")
+    body = r.json()
+    assert body["start_url"] == f"https://console.example.com/app?token={token}"
+    assert body["scope"] == "https://console.example.com/"
+    # Icons should be absolute URLs on the frontend origin
+    for icon in body["icons"]:
+        assert icon["src"].startswith("https://console.example.com/")
+
+
+def test_manifest_works_for_parent_token(client, db_and_seeds, monkeypatch):
+    monkeypatch.setenv("APP_BASE_URL", "https://console.example.com")
+    get_settings.cache_clear()
+
+    seeds = db_and_seeds
+    token, _ = generate_token(
+        role="parent", sub=seeds["parent_id"], center_id=seeds["center_id"],
+        child_ids=[seeds["child_id"]], secret=SECRET,
+    )
+    r = client.get(f"/api/auth/manifest?token={token}")
+    assert r.status_code == 200
+
+
+def test_manifest_404s_on_invalid_token(client, db_and_seeds):
+    r = client.get("/api/auth/manifest?token=garbage")
+    assert r.status_code == 404
+
+
+def test_manifest_404s_on_missing_token(client, db_and_seeds):
+    r = client.get("/api/auth/manifest")
+    # FastAPI returns 422 for missing required query params
+    assert r.status_code == 422
+
+
 def test_revoke_then_token_no_longer_works(client, db_and_seeds):
     seeds = db_and_seeds
     director_token, _ = generate_token(

@@ -1,6 +1,7 @@
 """Authentication endpoints for the pilot.
 
   GET  /api/auth/whoami           — anyone with a valid token; returns role + ids
+  GET  /api/auth/manifest         — per-user PWA manifest (token in query string)
   POST /api/admin/tokens/issue    — director only; mints a bootstrap URL for any role
   POST /api/admin/tokens/revoke   — director only; adds a (sub, nonce) to revoked list
 
@@ -12,7 +13,8 @@ import logging
 from typing import List, Literal, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -24,6 +26,7 @@ from backend.utils.auth_tokens import (
     TokenPayload,
     generate_token,
     revoke_nonce,
+    verify_token,
 )
 from backend.utils.pilot_auth import require_role
 
@@ -70,6 +73,67 @@ async def whoami_parent(payload: TokenPayload = Depends(require_role("parent")))
         center_id=payload.center_id,
         child_ids=list(payload.child_ids),
     )
+
+
+# ─── /api/auth/manifest ───────────────────────────────────────
+
+
+@router.get("/auth/manifest")
+async def manifest(
+    token: str = Query(..., description="Signed bearer token"),
+    db: Session = Depends(get_db),
+):
+    """Per-user PWA manifest.
+
+    Used by iOS to bake a token-bearing `start_url` into the home-screen
+    icon at install time. Returning a stable backend URL (instead of a
+    Blob URL) is the only reliable way on iOS WebKit — Blob URLs are
+    silently ignored as manifest sources.
+
+    Verifies the token signature only — no DB role check, no whoami.
+    The token in the query string IS the auth: anyone holding a valid
+    token may fetch the corresponding manifest. Invalid tokens return
+    404 to avoid leaking validity info.
+    """
+    payload = verify_token(token, db)
+    if payload is None:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    settings = get_settings()
+    base = settings.app_base_url.rstrip("/")
+
+    body = {
+        "name": "Daycare Portal",
+        "short_name": "Daycare",
+        "description": "Real-time updates from your daycare",
+        # Scope must encompass start_url and is on the frontend origin.
+        "scope": f"{base}/",
+        "start_url": f"{base}/app?token={token}",
+        "display": "standalone",
+        "orientation": "portrait",
+        "background_color": "#fef8f5",
+        "theme_color": "#8a4f36",
+        "icons": [
+            {
+                "src": f"{base}/icons/icon-192.png",
+                "sizes": "192x192",
+                "type": "image/png",
+            },
+            {
+                "src": f"{base}/icons/icon-512.png",
+                "sizes": "512x512",
+                "type": "image/png",
+            },
+            {
+                "src": f"{base}/icons/icon-maskable-512.png",
+                "sizes": "512x512",
+                "type": "image/png",
+                "purpose": "maskable",
+            },
+        ],
+    }
+
+    return JSONResponse(content=body, media_type="application/manifest+json")
 
 
 # ─── /api/admin/tokens/issue ──────────────────────────────────
