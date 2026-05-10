@@ -10,6 +10,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.storage.database import get_db
@@ -204,6 +205,19 @@ def delete_room_endpoint(center_id: UUID, room_id: UUID, db: Session = Depends(g
 # ─── Teacher Endpoints ────────────────────────────────────────
 
 
+def _translate_teacher_integrity_error(err: IntegrityError, phone: Optional[str] = None) -> HTTPException:
+    """Map an IntegrityError from a teacher write to a friendly 409."""
+    msg = str(getattr(err, "orig", err))
+    if "teachers_phone_key" in msg or ("phone" in msg.lower() and ("unique" in msg.lower() or "duplicate" in msg.lower())):
+        detail = (
+            f"A teacher with phone {phone} already exists."
+            if phone
+            else "Another teacher already uses that phone number."
+        )
+        return HTTPException(status_code=409, detail=detail)
+    return HTTPException(status_code=409, detail="Teacher conflicts with existing data.")
+
+
 @router.post(
     "/api/teachers/{center_id}",
     response_model=TeacherOut,
@@ -212,7 +226,11 @@ def delete_room_endpoint(center_id: UUID, room_id: UUID, db: Session = Depends(g
 )
 def create_teacher_endpoint(center_id: UUID, body: TeacherCreate, db: Session = Depends(get_db)):
     """Register a new teacher."""
-    teacher = create_teacher(db, center_id, body.name, body.phone, body.room_id)
+    try:
+        teacher = create_teacher(db, center_id, body.name, body.phone, body.room_id)
+    except IntegrityError as e:
+        db.rollback()
+        raise _translate_teacher_integrity_error(e, phone=body.phone)
     logger.info(f"Registered teacher '{body.name}' in center {center_id}")
     return teacher
 
@@ -237,10 +255,36 @@ def update_teacher_endpoint(center_id: UUID, teacher_id: UUID, body: TeacherUpda
     updates = body.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
-    teacher = update_teacher(db, center_id, teacher_id, updates)
+    try:
+        teacher = update_teacher(db, center_id, teacher_id, updates)
+    except IntegrityError as e:
+        db.rollback()
+        raise _translate_teacher_integrity_error(e, phone=updates.get("phone"))
     if not teacher:
         raise HTTPException(status_code=404, detail="Teacher not found")
     return teacher
+
+
+@router.delete(
+    "/api/teachers/{center_id}/{teacher_id}",
+    status_code=204,
+    dependencies=[Depends(require_role("director"))],
+)
+def remove_teacher_endpoint(center_id: UUID, teacher_id: UUID, db: Session = Depends(get_db)):
+    """Remove a teacher.
+
+    Soft-delete only — sets is_active=False. Hard-deleting a teacher row
+    would cascade through the events table (each event has teacher_id) and
+    break the audit trail required by legal_PRD. Soft-deleted teachers stop
+    appearing in list_teachers() and can no longer post via WhatsApp
+    (the webhook lookup filters by is_active).
+
+    Idempotent: removing a teacher that's already inactive returns 204.
+    """
+    teacher = update_teacher(db, center_id, teacher_id, {"is_active": False})
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    logger.info(f"Removed teacher {teacher_id} from center {center_id}")
 
 
 # ─── Children Endpoints ───────────────────────────────────────

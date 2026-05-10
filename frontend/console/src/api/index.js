@@ -173,7 +173,10 @@ export async function createTeacher(centerId, data) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error(`Failed to create teacher: ${res.status}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `Failed to create teacher: ${res.status}`);
+  }
   return res.json();
 }
 
@@ -183,8 +186,21 @@ export async function updateTeacher(centerId, teacherId, updates) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(updates),
   });
-  if (!res.ok) throw new Error(`Failed to update teacher: ${res.status}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `Failed to update teacher: ${res.status}`);
+  }
   return res.json();
+}
+
+export async function deleteTeacher(centerId, teacherId) {
+  const res = await apiFetch(`/api/teachers/${centerId}/${teacherId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok && res.status !== 204) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `Failed to remove teacher: ${res.status}`);
+  }
 }
 
 // ─── Onboarding: Children ───────────────────────────────────

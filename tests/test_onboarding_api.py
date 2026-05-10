@@ -162,6 +162,61 @@ def test_deactivate_teacher(db_session):
     assert len(resp.json()) == 0  # deactivated = hidden
 
 
+def test_create_teacher_duplicate_phone_returns_409(db_session):
+    """Posting a teacher with an already-registered phone → 409, not 500."""
+    client = TestClient(app)
+    client.post(f"/api/teachers/{CENTER_ID}", json={"name": "First", "phone": "+19998887777"})
+
+    resp = client.post(
+        f"/api/teachers/{CENTER_ID}",
+        json={"name": "Duplicate", "phone": "+19998887777"},
+    )
+    assert resp.status_code == 409, resp.text
+    detail = resp.json()["detail"]
+    assert "+19998887777" in detail or "phone" in detail.lower()
+
+
+def test_update_teacher_to_taken_phone_returns_409(db_session):
+    """Editing a teacher's phone to one already used by another → 409."""
+    client = TestClient(app)
+    a = client.post(f"/api/teachers/{CENTER_ID}", json={"name": "A", "phone": "+15550000001"}).json()
+    client.post(f"/api/teachers/{CENTER_ID}", json={"name": "B", "phone": "+15550000002"})
+
+    resp = client.patch(
+        f"/api/teachers/{CENTER_ID}/{a['id']}",
+        json={"phone": "+15550000002"},
+    )
+    assert resp.status_code == 409, resp.text
+
+
+def test_delete_teacher_soft_deletes(db_session):
+    """DELETE /api/teachers/... soft-deletes (is_active=False) and 204s."""
+    client = TestClient(app)
+    teacher = client.post(f"/api/teachers/{CENTER_ID}", json={"name": "Gone", "phone": "+15550000099"}).json()
+
+    resp = client.delete(f"/api/teachers/{CENTER_ID}/{teacher['id']}")
+    assert resp.status_code == 204
+
+    # Listed teachers no longer includes them
+    assert len(client.get(f"/api/teachers/{CENTER_ID}").json()) == 0
+
+
+def test_delete_teacher_is_idempotent(db_session):
+    """Deleting an already-removed teacher still returns 204."""
+    client = TestClient(app)
+    teacher = client.post(f"/api/teachers/{CENTER_ID}", json={"name": "Gone", "phone": "+15550000098"}).json()
+
+    client.delete(f"/api/teachers/{CENTER_ID}/{teacher['id']}")
+    resp = client.delete(f"/api/teachers/{CENTER_ID}/{teacher['id']}")
+    assert resp.status_code == 204
+
+
+def test_delete_teacher_404_on_missing(db_session):
+    client = TestClient(app)
+    resp = client.delete(f"/api/teachers/{CENTER_ID}/{uuid.uuid4()}")
+    assert resp.status_code == 404
+
+
 # ─── Children Tests ───────────────────────────────────────────
 
 
