@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { updateContact } from '../../api';
+import { issueParentToken, updateContact } from '../../api';
 
 const REL_STYLE = {
   parent:    'bg-primary-fixed text-on-primary-container',
@@ -11,6 +11,24 @@ export default function ContactRow({ contact, centerId, addToast, onUpdate }) {
   const [editing, setEditing] = useState(false);
   const [fields, setFields] = useState({});
   const [saving, setSaving] = useState(false);
+  const [issuing, setIssuing] = useState(false);
+
+  async function copyBootstrapUrl() {
+    setIssuing(true);
+    try {
+      const result = await issueParentToken({
+        centerId,
+        parentContactId: contact.id,
+        childIds: [contact.child_id],
+      });
+      await navigator.clipboard.writeText(result.bootstrap_url);
+      addToast('Parent bootstrap URL copied to clipboard');
+    } catch (err) {
+      addToast(err.message || 'Failed to mint link', 'error');
+    } finally {
+      setIssuing(false);
+    }
+  }
 
   function startEdit() {
     setFields({
@@ -104,6 +122,18 @@ export default function ContactRow({ contact, centerId, addToast, onUpdate }) {
           {contact.email && <span>{contact.email}</span>}
         </div>
       </div>
+      {(contact.relationship_type === 'parent' || contact.relationship_type === 'guardian') && (
+        <button
+          onClick={copyBootstrapUrl}
+          disabled={issuing}
+          className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full hover:bg-surface-container-high text-outline transition-all disabled:opacity-40"
+          title="Copy bootstrap link for this contact"
+        >
+          <span className="material-symbols-outlined text-base">
+            {issuing ? 'hourglass_empty' : 'link'}
+          </span>
+        </button>
+      )}
       <button
         onClick={startEdit}
         className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full hover:bg-surface-container-high text-outline transition-all"

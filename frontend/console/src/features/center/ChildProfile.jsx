@@ -185,25 +185,7 @@ export default function ChildProfile({ child, rooms, centerId, addToast, onUpdat
               <Field label="Medical Notes" value={detail.medical_notes || 'None'} full />
             </div>
 
-            {/* Parent Portal Link */}
-            <div className="mt-4 p-3 bg-surface-container-low rounded-lg flex items-center gap-3">
-              <span className="material-symbols-outlined text-primary text-lg">link</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-on-surface-variant mb-0.5">Parent Portal Link</p>
-                <p className="text-xs text-on-surface font-mono truncate">
-                  {`${window.location.origin}/parent/${centerId}/${child.id}`}
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(`${window.location.origin}/parent/${centerId}/${child.id}`);
-                  addToast('Link copied!');
-                }}
-                className="btn-secondary !py-1.5 !px-3 text-xs shrink-0"
-              >
-                <span className="material-symbols-outlined text-sm">content_copy</span>
-              </button>
-            </div>
+            {/* Parent bootstrap URLs are minted per-contact below — see Contacts list. */}
           </>
         )}
       </div>
