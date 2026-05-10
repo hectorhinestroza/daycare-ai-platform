@@ -12,6 +12,7 @@ Registered once in main.py lifespan; shuts down cleanly on app exit.
 """
 
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -26,6 +27,7 @@ from backend.storage.events_handlers import delete_pending_photo, get_expired_pe
 from backend.storage.models import Center, Child
 from backend.storage.narrative_handlers import get_narrative, upsert_narrative
 from backend.utils.s3 import delete_photo as delete_s3_object
+from backend.utils.safe_logging import safe_log
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +41,23 @@ async def _generate_all_centers() -> None:
 
     try:
         centers = db.query(Center).all()
+
+        # Count how many centers are currently at 5 PM local on a weekday —
+        # the eligibility predicate the loop below applies. Reported up-front
+        # so observability sees the tick even when no center fires.
+        eligible_centers = 0
+        for c in centers:
+            try:
+                local_now = datetime.now(ZoneInfo(c.timezone or "UTC"))
+                if local_now.hour == _EOD_HOUR and local_now.weekday() < 5:
+                    eligible_centers += 1
+            except Exception:
+                pass
+        safe_log(
+            logger, "info", "scheduler.eod_tick",
+            total_centers=len(centers),
+            eligible_centers=eligible_centers,
+        )
 
         for center in centers:
             tz_str = center.timezone or "UTC"

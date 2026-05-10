@@ -77,7 +77,7 @@ class TestPhotoWithoutContext:
 
     @patch("backend.routers.whatsapp.upload_photo")
     @patch("backend.routers.whatsapp.strip_exif")
-    @patch("backend.routers.whatsapp.delete_twilio_media", new_callable=AsyncMock)
+    @patch("backend.routers.whatsapp.delete_twilio_media_with_retry", new_callable=AsyncMock)
     @patch("backend.routers.whatsapp.download_twilio_media", new_callable=AsyncMock)
     def test_creates_pending_photo_row(
         self, mock_download, mock_delete_twilio, mock_strip, mock_upload, setup_db
@@ -131,7 +131,7 @@ class TestPhotoWithContext:
     @patch("backend.routers.whatsapp.get_child_for_processing")
     @patch("backend.routers.whatsapp.upload_photo")
     @patch("backend.routers.whatsapp.strip_exif")
-    @patch("backend.routers.whatsapp.delete_twilio_media", new_callable=AsyncMock)
+    @patch("backend.routers.whatsapp.delete_twilio_media_with_retry", new_callable=AsyncMock)
     @patch("backend.routers.whatsapp.download_twilio_media", new_callable=AsyncMock)
     def test_happy_path_creates_photo(
         self,

@@ -5,6 +5,7 @@ import gc
 import hashlib
 import json
 import logging
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Dict, Optional
@@ -34,6 +35,7 @@ from backend.utils.media import delete_twilio_media_with_retry, download_twilio_
 from backend.utils.photo import build_pending_s3_key, build_photo_s3_key, strip_exif
 from backend.utils.s3 import delete_photo as delete_s3_object
 from backend.utils.s3 import download_from_s3, upload_photo
+from backend.utils.safe_logging import safe_log
 from backend.utils.twilio_security import verify_twilio_signature
 from schemas.events import BaseEvent
 
@@ -281,19 +283,28 @@ async def whatsapp_webhook(
     - Text commands (/child, /classroom)
     - Photo messages (stored for later attachment)
     """
+    webhook_start = time.monotonic()
+
     # Twilio sends From as "whatsapp:+1XXXXXXXXXX" — normalize to E.164
     phone = From.replace("whatsapp:", "").strip()
     body = Body.strip()
     num_media = int(NumMedia)
+    has_audio = bool(MediaContentType0 and ("audio" in MediaContentType0 or "video" in MediaContentType0))
+    has_image = bool(MediaContentType0 and "image" in MediaContentType0)
 
     # Dedup Twilio retries before doing any work.
     if not _claim_message_sid(db, MessageSid):
-        logger.info(f"webhook.duplicate_message message_sid={MessageSid}")
+        safe_log(logger, "info", "webhook.duplicate_message", message_sid=MessageSid)
         return _build_empty_twiml()
 
-    logger.info(
-        "webhook.received phone_hash=%s body_length=%d num_media=%d message_sid=%s",
-        _phone_hash(phone), len(body), num_media, MessageSid,
+    safe_log(
+        logger, "info", "webhook.received",
+        message_sid=MessageSid,
+        body_length=len(body),
+        num_media=num_media,
+        has_audio=has_audio,
+        has_image=has_image,
+        phone_hash=_phone_hash(phone),
     )
 
     # 1. Handle commands first (no DB lookup needed for parsing)
@@ -313,13 +324,18 @@ async def whatsapp_webhook(
     # 2. Look up Teacher from DB
     teacher = get_teacher_by_phone(db, phone)
     if not teacher:
-        logger.warning("webhook.teacher_unknown phone_hash=%s", _phone_hash(phone))
+        safe_log(logger, "warning", "webhook.teacher_unknown", phone_hash=_phone_hash(phone))
         if command_reply:
             # Still return command reply for unregistered users
             return _build_twiml_response(command_reply)
         return _build_twiml_response(
             "❌ This phone number is not registered as a teacher account."
         )
+
+    safe_log(
+        logger, "info", "webhook.teacher_resolved",
+        teacher_id=str(teacher.id), center_id=str(teacher.center_id),
+    )
 
     center_id = str(teacher.center_id)
     cmd_context = _get_command_context(phone)

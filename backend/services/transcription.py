@@ -2,8 +2,10 @@
 
 import io
 import logging
+import time
 
 from backend.utils.openai_client import get_openai_client
+from backend.utils.safe_logging import safe_log
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +27,7 @@ async def transcribe_audio(audio_bytes: bytes, filename: str = "audio.ogg") -> s
         raise ValueError("Empty audio data received")
 
     client = get_openai_client()
-
-    logger.info(f"Transcribing audio: {filename} ({len(audio_bytes)} bytes)")
+    start = time.monotonic()
 
     try:
         audio_file = io.BytesIO(audio_bytes)
@@ -43,11 +44,20 @@ async def transcribe_audio(audio_bytes: bytes, filename: str = "audio.ogg") -> s
         if not transcript_text:
             raise ValueError("Whisper returned empty transcript")
 
-        logger.info(f"Transcription complete: {len(transcript_text)} chars")
+        safe_log(
+            logger, "info", "transcription.completed",
+            duration_ms=int((time.monotonic() - start) * 1000),
+            transcript_length=len(transcript_text),
+            audio_bytes=len(audio_bytes),
+        )
         return transcript_text
 
     except Exception as e:
         # Don't echo the exception message — Whisper errors are usually generic
         # but defensive scrubbing keeps prod logs PII-free even on edge cases.
-        logger.error("transcription.failed error_type=%s", type(e).__name__)
+        safe_log(
+            logger, "error", "transcription.failed",
+            duration_ms=int((time.monotonic() - start) * 1000),
+            error_type=type(e).__name__,
+        )
         raise
