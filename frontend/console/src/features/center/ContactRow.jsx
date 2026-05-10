@@ -12,8 +12,19 @@ export default function ContactRow({ contact, centerId, addToast, onUpdate }) {
   const [fields, setFields] = useState({});
   const [saving, setSaving] = useState(false);
   const [issuing, setIssuing] = useState(false);
+  const [bootstrapUrl, setBootstrapUrl] = useState(null);
 
-  async function copyBootstrapUrl() {
+  // Splits "mint" and "copy" into two separate user gestures: minting is
+  // async (button click → API → state update), then a fresh click on the
+  // Copy button does the synchronous clipboard write. iOS Safari rejects
+  // navigator.clipboard.writeText after any await — this two-step flow
+  // dodges that.
+  async function generateUrl() {
+    if (bootstrapUrl) {
+      // Toggle off if already shown
+      setBootstrapUrl(null);
+      return;
+    }
     setIssuing(true);
     try {
       const result = await issueParentToken({
@@ -21,13 +32,20 @@ export default function ContactRow({ contact, centerId, addToast, onUpdate }) {
         parentContactId: contact.id,
         childIds: [contact.child_id],
       });
-      await navigator.clipboard.writeText(result.bootstrap_url);
-      addToast('Parent bootstrap URL copied to clipboard');
+      setBootstrapUrl(result.bootstrap_url);
     } catch (err) {
       addToast(err.message || 'Failed to mint link', 'error');
     } finally {
       setIssuing(false);
     }
+  }
+
+  function copyToClipboard() {
+    // Sync — fired directly from the click handler, no await before write.
+    navigator.clipboard.writeText(bootstrapUrl).then(
+      () => addToast('Copied!'),
+      () => addToast('Copy blocked — long-press the URL to copy manually', 'error'),
+    );
   }
 
   function startEdit() {
@@ -99,48 +117,75 @@ export default function ContactRow({ contact, centerId, addToast, onUpdate }) {
     );
   }
 
+  const canIssue = contact.relationship_type === 'parent' || contact.relationship_type === 'guardian';
+
   return (
-    <div className="flex items-center gap-3 py-2 group">
-      <div className="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center shrink-0">
-        <span className="material-symbols-outlined text-on-surface-variant text-base">person</span>
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-on-surface truncate">{contact.name}</span>
-          <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${relStyle}`}>
-            {contact.relationship_type}
-          </span>
-          {contact.is_primary && (
-            <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-secondary text-white">Primary</span>
-          )}
-          {contact.can_pickup && (
-            <span className="material-symbols-outlined text-secondary text-sm" title="Can pick up" style={{ fontVariationSettings: "'FILL' 1" }}>verified_user</span>
-          )}
+    <div className="py-2 group">
+      <div className="flex items-center gap-3">
+        <div className="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center shrink-0">
+          <span className="material-symbols-outlined text-on-surface-variant text-base">person</span>
         </div>
-        <div className="flex items-center gap-3 mt-0.5 text-xs text-on-surface-variant">
-          {contact.phone && <span>{contact.phone}</span>}
-          {contact.email && <span>{contact.email}</span>}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-on-surface truncate">{contact.name}</span>
+            <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${relStyle}`}>
+              {contact.relationship_type}
+            </span>
+            {contact.is_primary && (
+              <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-secondary text-white">Primary</span>
+            )}
+            {contact.can_pickup && (
+              <span className="material-symbols-outlined text-secondary text-sm" title="Can pick up" style={{ fontVariationSettings: "'FILL' 1" }}>verified_user</span>
+            )}
+          </div>
+          <div className="flex items-center gap-3 mt-0.5 text-xs text-on-surface-variant">
+            {contact.phone && <span>{contact.phone}</span>}
+            {contact.email && <span>{contact.email}</span>}
+          </div>
         </div>
-      </div>
-      {(contact.relationship_type === 'parent' || contact.relationship_type === 'guardian') && (
+        {canIssue && (
+          <button
+            onClick={generateUrl}
+            disabled={issuing}
+            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full hover:bg-surface-container-high text-outline transition-all disabled:opacity-40"
+            title={bootstrapUrl ? 'Hide bootstrap link' : 'Generate bootstrap link for this contact'}
+          >
+            <span className="material-symbols-outlined text-base">
+              {issuing ? 'hourglass_empty' : bootstrapUrl ? 'link_off' : 'link'}
+            </span>
+          </button>
+        )}
         <button
-          onClick={copyBootstrapUrl}
-          disabled={issuing}
-          className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full hover:bg-surface-container-high text-outline transition-all disabled:opacity-40"
-          title="Copy bootstrap link for this contact"
+          onClick={startEdit}
+          className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full hover:bg-surface-container-high text-outline transition-all"
+          title="Edit contact"
         >
-          <span className="material-symbols-outlined text-base">
-            {issuing ? 'hourglass_empty' : 'link'}
-          </span>
+          <span className="material-symbols-outlined text-base">edit</span>
         </button>
+      </div>
+
+      {/* Inline bootstrap URL panel — visible after the link icon mints a token. */}
+      {bootstrapUrl && (
+        <div className="mt-2 ml-11 p-3 bg-surface-container-low rounded-lg flex items-center gap-2">
+          <span className="text-xs font-mono text-on-surface truncate flex-1" title={bootstrapUrl}>
+            {bootstrapUrl}
+          </span>
+          <button
+            onClick={copyToClipboard}
+            className="btn-secondary !py-1 !px-3 text-xs shrink-0"
+          >
+            <span className="material-symbols-outlined text-sm mr-1">content_copy</span>
+            Copy
+          </button>
+          <button
+            onClick={() => setBootstrapUrl(null)}
+            className="p-1 rounded-full hover:bg-surface-container-high text-outline shrink-0"
+            title="Hide"
+          >
+            <span className="material-symbols-outlined text-sm">close</span>
+          </button>
+        </div>
       )}
-      <button
-        onClick={startEdit}
-        className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full hover:bg-surface-container-high text-outline transition-all"
-        title="Edit contact"
-      >
-        <span className="material-symbols-outlined text-base">edit</span>
-      </button>
     </div>
   );
 }
