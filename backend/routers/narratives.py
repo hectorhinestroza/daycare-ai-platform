@@ -21,6 +21,8 @@ from sqlalchemy.orm import Session
 from backend.services.narrative import generate_narrative
 from backend.storage.database import get_db
 from backend.storage.models import Child
+from backend.utils.auth_tokens import TokenPayload
+from backend.utils.pilot_auth import require_parent_owns_child, require_role
 from backend.storage.narrative_handlers import (
     get_narrative,
     get_narratives_for_child,
@@ -76,8 +78,13 @@ def list_narratives(
     child_id: UUID,
     limit: int = 30,
     db: Session = Depends(get_db),
+    payload: TokenPayload = Depends(require_role("any")),
 ):
-    """Narrative history for a child — newest first."""
+    """Narrative history for a child — newest first.
+
+    Accessible to the parent of the child (via parent token) or any staff.
+    """
+    require_parent_owns_child(child_id, payload)
     narratives = get_narratives_for_child(db, center_id, child_id, limit=limit)
     return [_serialize(n) for n in narratives]
 
@@ -88,15 +95,21 @@ def get_narrative_for_date(
     child_id: UUID,
     target_date: date_type,
     db: Session = Depends(get_db),
+    payload: TokenPayload = Depends(require_role("any")),
 ):
     """Get the narrative for a specific date. Returns 404 if not yet generated."""
+    require_parent_owns_child(child_id, payload)
     narrative = get_narrative(db, center_id, child_id, target_date)
     if not narrative:
         raise HTTPException(status_code=404, detail="No narrative for this date")
     return _serialize(narrative)
 
 
-@router.post("/{center_id}/{child_id}/generate", response_model=NarrativeOut)
+@router.post(
+    "/{center_id}/{child_id}/generate",
+    response_model=NarrativeOut,
+    dependencies=[Depends(require_role("staff"))],
+)
 async def generate_narrative_endpoint(
     center_id: UUID,
     child_id: UUID,
@@ -131,7 +144,10 @@ async def generate_narrative_endpoint(
     return _serialize(narrative)
 
 
-@router.post("/{center_id}/generate-all")
+@router.post(
+    "/{center_id}/generate-all",
+    dependencies=[Depends(require_role("director"))],
+)
 async def generate_all_narratives(
     center_id: UUID,
     target_date: Optional[date_type] = Query(default=None, description="Date to generate for (defaults to today UTC)"),

@@ -67,13 +67,21 @@ def _make_dev_payload(role: str) -> TokenPayload:
 def require_role(required: RoleGuard):
     """Build a dependency that enforces `required` role on a request.
 
+    Guards:
+      - "staff"     — teacher OR director
+      - "director"  — director only
+      - "parent"    — parent only
+      - "any"       — any valid token. Use when an endpoint needs custom
+                      ownership logic (e.g. photo feed: parent of child OR
+                      staff at center). Handler does the access check.
+
     Raises 401 on missing/invalid token (production) and 403 if the token
     is valid but the role doesn't match.
 
     Returns the verified TokenPayload so handlers can use payload.sub,
     payload.center_id, payload.child_ids without re-verifying.
     """
-    if required not in ("staff", "director", "parent"):
+    if required not in ("staff", "director", "parent", "any"):
         raise ValueError(f"unknown role guard: {required!r}")
 
     async def dependency(
@@ -108,6 +116,7 @@ def require_role(required: RoleGuard):
             (required == "staff" and payload.role in ("teacher", "director"))
             or (required == "director" and payload.role == "director")
             or (required == "parent" and payload.role == "parent")
+            or (required == "any")
         )
         if not ok:
             raise HTTPException(status_code=403, detail="Forbidden")
