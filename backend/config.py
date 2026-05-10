@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     # Empty in dev/test → token issuance refuses, verification returns None.
     auth_token_secret: str = ""
 
+    # Pilot kill switch — when True, voice memos skip transcription + GPT-4o
+    # extraction. Audio is still deleted from Twilio (zero-retention). Teacher
+    # gets a "pending review" reply. Flip via Railway env when something is
+    # noticeably wrong with the AI pipeline.
+    extraction_disabled: bool = False
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

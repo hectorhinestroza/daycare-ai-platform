@@ -450,6 +450,17 @@ async def whatsapp_webhook(
         and MediaContentType0
         and ("audio" in MediaContentType0 or "video" in MediaContentType0)
     ):
+        # Kill switch — skip the AI pipeline entirely. Still delete the audio
+        # from Twilio (zero-retention compliance is independent of extraction).
+        settings = get_settings()
+        if settings.extraction_disabled:
+            asyncio.create_task(delete_twilio_media_with_retry(MediaUrl0))
+            safe_log(logger, "warning", "extraction.disabled", message_sid=MessageSid)
+            return _build_twiml_response(
+                "📩 Recording received — pending review. (AI extraction is currently paused; "
+                "your director will follow up.)"
+            )
+
         try:
             # Download & Transcribe
             audio_bytes, content_type = await download_twilio_media(
@@ -502,6 +513,11 @@ async def whatsapp_webhook(
 
     # 4. Handle Text as a Note
     if body and not num_media:
+        if get_settings().extraction_disabled:
+            safe_log(logger, "warning", "extraction.disabled", message_sid=MessageSid)
+            return _build_twiml_response(
+                "📩 Note received — pending review. (AI extraction is currently paused.)"
+            )
         try:
             # Extract
             center_children = get_children_by_center(db, teacher.center_id)

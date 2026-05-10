@@ -179,3 +179,52 @@ class TestVoicePipeline:
         saved_events = db.query(Event).all()
         assert len(saved_events) == 1
         assert saved_events[0].event_type == "potty"
+
+
+class TestKillSwitch:
+    """EXTRACTION_DISABLED=true short-circuits the AI pipeline."""
+
+    @patch("backend.routers.whatsapp.delete_twilio_media_with_retry", new_callable=AsyncMock)
+    @patch("backend.routers.whatsapp.extract_events", new_callable=AsyncMock)
+    @patch("backend.routers.whatsapp.transcribe_audio", new_callable=AsyncMock)
+    @patch("backend.routers.whatsapp.download_twilio_media", new_callable=AsyncMock)
+    def test_voice_memo_skipped_when_disabled(
+        self, mock_download, mock_transcribe, mock_extract, mock_delete, setup_db, monkeypatch,
+    ):
+        from backend.config import get_settings
+        monkeypatch.setenv("EXTRACTION_DISABLED", "true")
+        get_settings.cache_clear()
+
+        response = client.post(
+            "/webhook/whatsapp",
+            data={
+                "From": "+1234567890",
+                "Body": "",
+                "NumMedia": "1",
+                "MediaUrl0": "https://api.twilio.com/media/test",
+                "MediaContentType0": "audio/ogg",
+            },
+        )
+        assert response.status_code == 200
+        assert "pending review" in response.text.lower()
+        mock_download.assert_not_called()
+        mock_transcribe.assert_not_called()
+        mock_extract.assert_not_called()
+
+        get_settings.cache_clear()
+
+    @patch("backend.routers.whatsapp.extract_events", new_callable=AsyncMock)
+    def test_text_skipped_when_disabled(self, mock_extract, setup_db, monkeypatch):
+        from backend.config import get_settings
+        monkeypatch.setenv("EXTRACTION_DISABLED", "true")
+        get_settings.cache_clear()
+
+        response = client.post(
+            "/webhook/whatsapp",
+            data={"From": "+1234567890", "Body": "Jason had a snack", "NumMedia": "0"},
+        )
+        assert response.status_code == 200
+        assert "pending review" in response.text.lower()
+        mock_extract.assert_not_called()
+
+        get_settings.cache_clear()
