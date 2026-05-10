@@ -5,6 +5,7 @@ import App from './App.jsx'
 import ParentPortal from './portals/parent/ParentPortal.jsx'
 import ConsentPage from './portals/ConsentPortal/ConsentPage.jsx'
 import Dispatcher from './portals/Dispatcher.jsx'
+import PrivacyPolicy from './portals/PrivacyPolicy.jsx'
 import { getStoredToken } from './api/client.js'
 import { installDynamicManifest } from './utils/dynamicManifest.js'
 import { initSentry } from './sentry.js'
@@ -21,6 +22,11 @@ installDynamicManifest(getStoredToken());
 
 function Router() {
   const path = window.location.pathname;
+
+  // /privacy — static privacy policy (no auth, COPPA-required public page)
+  if (path === '/privacy' || path === '/privacy/') {
+    return <PrivacyPolicy />;
+  }
 
   // /consent/:token — magic-link consent flow (no bearer auth)
   const consentMatch = path.match(/^\/consent\/([^/]+)/);

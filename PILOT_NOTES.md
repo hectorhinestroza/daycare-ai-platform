@@ -212,6 +212,22 @@ Effect:
 Flip back to `false` (or remove the var) to resume normal extraction.
 No restart needed beyond Railway's deploy.
 
+## Privacy Policy
+
+A draft Privacy Policy is served at `/privacy`. The content was
+generated from `docs/legal_prd_v1.md §12` and **has not been reviewed
+by a lawyer**. Before the first parent receives a bootstrap URL:
+
+1. Send the rendered page (or `frontend/console/src/portals/PrivacyPolicy.jsx`)
+   to legal counsel
+2. Have them edit the content in place — keep the route at `/privacy`
+3. Update the "Last updated" date in the component
+4. Remove the "draft pending legal review" tag near the top
+
+The page is reachable from the parent portal footer. The route is
+public (no bearer-token gate). It is also linked from `docs/legal_prd_v1.md
+Section 11 item 13` (pre-launch checklist).
+
 ## Acceptance Test Runbook
 
 _Filled in by Phase 5. Placeholder._

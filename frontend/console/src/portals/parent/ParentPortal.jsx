@@ -239,6 +239,17 @@ export default function ParentPortal({ centerId, childId }) {
           </div>
         )}
       </main>
+
+      {/* Privacy policy footer — COPPA requires the link be reachable
+          from every parent-facing page. */}
+      <footer className="pb-8 px-6 max-w-2xl mx-auto text-center">
+        <a
+          href="/privacy"
+          className="text-xs text-on-surface-variant/70 hover:text-on-surface-variant underline"
+        >
+          Privacy Policy
+        </a>
+      </footer>
     </div>
   );
 }
