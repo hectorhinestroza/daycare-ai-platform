@@ -278,3 +278,29 @@ export async function submitConsent(token, data) {
   }
   return res.json();
 }
+
+// ─── Auth: bootstrap tokens ────────────────────────────────────
+
+/**
+ * Mint a fresh parent bootstrap URL for a given parent contact + child.
+ * Director-only. Returns the issue endpoint's full response so callers
+ * can show the URL, save the nonce for revocation, etc.
+ */
+export async function issueParentToken({ centerId, parentContactId, childIds, expiresInDays = 90 }) {
+  const res = await apiFetch('/api/admin/tokens/issue', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      role: 'parent',
+      sub: parentContactId,
+      center_id: centerId,
+      child_ids: childIds,
+      expires_in_days: expiresInDays,
+    }),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || `Failed to issue parent token: ${res.status}`);
+  }
+  return res.json();
+}
