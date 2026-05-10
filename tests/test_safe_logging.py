@@ -1,5 +1,6 @@
 """Tests for safe_log() and Sentry pii_scrubber()."""
 
+import asyncio
 import json
 import logging
 
@@ -8,8 +9,11 @@ import pytest
 from backend.utils.safe_logging import (
     PII_FIELD_NAMES,
     REDACTED,
+    get_request_id,
     pii_scrubber,
+    reset_request_id,
     safe_log,
+    set_request_id,
 )
 
 
@@ -155,3 +159,73 @@ def test_scrubber_handles_missing_optional_keys():
     assert pii_scrubber({"extra": None}) == {"extra": None}
     assert pii_scrubber({"exception": {"values": []}}) == {"exception": {"values": []}}
     assert pii_scrubber({"exception": {"values": [{}]}}) == {"exception": {"values": [{}]}}
+
+
+# ─── request_id contextvar ────────────────────────────────────
+
+
+def test_safe_log_auto_injects_request_id(caplog, monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    logger = logging.getLogger("test.safe_log.rid")
+
+    token = set_request_id("req-abc-123")
+    try:
+        with caplog.at_level(logging.INFO, logger="test.safe_log.rid"):
+            safe_log(logger, "info", "test.event", count=3)
+    finally:
+        reset_request_id(token)
+
+    payload = json.loads(caplog.records[0].message)
+    assert payload["request_id"] == "req-abc-123"
+    assert payload["count"] == 3
+
+
+def test_safe_log_omits_request_id_when_unset(caplog, monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    logger = logging.getLogger("test.safe_log.no_rid")
+
+    # Ensure no leftover binding from another test
+    assert get_request_id() is None
+
+    with caplog.at_level(logging.INFO, logger="test.safe_log.no_rid"):
+        safe_log(logger, "info", "background.task", duration_ms=42)
+
+    payload = json.loads(caplog.records[0].message)
+    assert "request_id" not in payload
+    assert payload["duration_ms"] == 42
+
+
+def test_safe_log_explicit_request_id_wins(caplog, monkeypatch):
+    """If a caller passes request_id=..., that value wins over the contextvar."""
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    logger = logging.getLogger("test.safe_log.explicit_rid")
+
+    token = set_request_id("ambient-id")
+    try:
+        with caplog.at_level(logging.INFO, logger="test.safe_log.explicit_rid"):
+            safe_log(logger, "info", "test.event", request_id="explicit-id")
+    finally:
+        reset_request_id(token)
+
+    payload = json.loads(caplog.records[0].message)
+    assert payload["request_id"] == "explicit-id"
+
+
+def test_request_id_isolated_per_async_context():
+    """ContextVars should not leak between concurrent async tasks."""
+
+    async def task(request_id):
+        token = set_request_id(request_id)
+        try:
+            await asyncio.sleep(0.01)
+            return get_request_id()
+        finally:
+            reset_request_id(token)
+
+    async def main():
+        a, b = await asyncio.gather(task("rid-A"), task("rid-B"))
+        return a, b
+
+    a, b = asyncio.run(main())
+    assert a == "rid-A"
+    assert b == "rid-B"

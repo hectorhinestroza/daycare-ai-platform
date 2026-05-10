@@ -30,7 +30,7 @@ from backend.storage.events_handlers import (
 )
 from backend.storage.models import PendingEvent
 from backend.utils.consent_gate import get_child_for_processing
-from backend.utils.media import delete_twilio_media, download_twilio_media
+from backend.utils.media import delete_twilio_media_with_retry, download_twilio_media
 from backend.utils.photo import build_pending_s3_key, build_photo_s3_key, strip_exif
 from backend.utils.s3 import delete_photo as delete_s3_object
 from backend.utils.s3 import download_from_s3, upload_photo
@@ -447,7 +447,7 @@ async def whatsapp_webhook(
             # Zero retention for audio — immediately delete from Twilio and clear memory
 
             # Fire and forget Twilio deletion
-            asyncio.create_task(delete_twilio_media(MediaUrl0))
+            asyncio.create_task(delete_twilio_media_with_retry(MediaUrl0))
             del audio_bytes
             gc.collect()
 
@@ -528,7 +528,7 @@ async def whatsapp_webhook(
             photo_bytes, content_type = await download_twilio_media(MediaUrl0)
 
             # Zero retention — delete from Twilio (fire-and-forget, matches audio pattern)
-            asyncio.create_task(delete_twilio_media(MediaUrl0))
+            asyncio.create_task(delete_twilio_media_with_retry(MediaUrl0))
 
             # Strip EXIF immediately — no raw metadata in S3, even temporarily
             clean_bytes = strip_exif(photo_bytes)
