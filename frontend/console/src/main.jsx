@@ -5,9 +5,19 @@ import App from './App.jsx'
 import ParentPortal from './portals/parent/ParentPortal.jsx'
 import ConsentPage from './portals/ConsentPortal/ConsentPage.jsx'
 import Dispatcher from './portals/Dispatcher.jsx'
+import { getStoredToken } from './api/client.js'
+import { installDynamicManifest } from './utils/dynamicManifest.js'
 import { initSentry } from './sentry.js'
 
 initSentry();
+
+// Install per-user manifest on every cold start, BEFORE any redirect or
+// component mount. Required for iOS Add-to-Home-Screen — by the time the
+// user taps Share → Add to Home Screen, they're usually on a portal page
+// (post-redirect from /app), and iOS reads whatever manifest the page
+// currently advertises. Static manifest = no token in start_url = "expired"
+// loop. This call swaps in the dynamic one immediately.
+installDynamicManifest(getStoredToken());
 
 function Router() {
   const path = window.location.pathname;
