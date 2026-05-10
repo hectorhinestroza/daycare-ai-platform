@@ -9,21 +9,25 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from backend.utils.safe_logging import reset_request_id, set_request_id
+
 logger = logging.getLogger(__name__)
 
 
 class RequestIDMiddleware(BaseHTTPMiddleware):
-    """Adds a unique X-Request-ID header to every request/response.
-
-    This ID is used to correlate log entries across the request lifecycle.
+    """Adds a unique X-Request-ID header to every request/response, and
+    binds it to a ContextVar so safe_log() auto-includes it in every
+    record emitted during the request.
     """
 
     async def dispatch(self, request: Request, call_next):
         request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
-        # Store on request state for use in endpoints
         request.state.request_id = request_id
-
-        response = await call_next(request)
+        token = set_request_id(request_id)
+        try:
+            response = await call_next(request)
+        finally:
+            reset_request_id(token)
         response.headers["X-Request-ID"] = request_id
         return response
 

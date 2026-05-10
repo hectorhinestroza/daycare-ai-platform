@@ -11,6 +11,7 @@ Endpoints:
     PATCH /api/events/{center_id}/{event_id}        — inline edit
 """
 import logging
+import time
 from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID
@@ -22,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from backend.services.narrative import generate_narrative
 from backend.storage.database import SessionLocal, get_db
+from backend.utils.safe_logging import safe_log
 from backend.utils.auth_tokens import TokenPayload
 from backend.utils.pilot_auth import require_parent_owns_child, require_role
 from backend.storage.events_handlers import (
@@ -117,6 +119,14 @@ async def _refresh_narrative_if_exists(center_id: UUID, child_id: UUID, event_da
         if not existing or existing.admin_override:
             return  # Nothing to refresh
 
+        safe_log(
+            logger, "info", "narrative_refresh.triggered",
+            child_id=str(child_id),
+            target_date=str(target_date),
+            trigger="event_approval",
+        )
+
+        refresh_start = time.monotonic()
         result = await generate_narrative(db, center_id, child_id, target_date)
         upsert_narrative(
             db,
@@ -125,9 +135,19 @@ async def _refresh_narrative_if_exists(center_id: UUID, child_id: UUID, event_da
             target_date=target_date,
             **{k: result[k] for k in ("headline", "body", "tone", "photo_captions")},
         )
-        logger.info(f"Narrative refreshed for child {child_id} on {target_date} after event approval")
+        safe_log(
+            logger, "info", "narrative_refresh.completed",
+            child_id=str(child_id),
+            target_date=str(target_date),
+            duration_ms=int((time.monotonic() - refresh_start) * 1000),
+        )
     except Exception as e:
-        logger.error(f"Background narrative refresh failed for child {child_id}: {e}", exc_info=True)
+        safe_log(
+            logger, "error", "narrative_refresh.failed",
+            child_id=str(child_id),
+            target_date=str(event_date),
+            error_type=type(e).__name__,
+        )
     finally:
         db.close()
 
@@ -264,8 +284,15 @@ def batch_approve_endpoint(
         reviewed_by=reviewed_by,
     )
 
-    label = f"batch group" if body.batch_id else body.child_name
-    logger.info(f"Batch approved {count} events for {label} in center {center_id}")
+    label = "batch group" if body.batch_id else body.child_name
+    # Note: child_name in label is fine for the response message, but the
+    # structured log records IDs only.
+    safe_log(
+        logger, "info", "event.batch_approved",
+        center_id=str(center_id),
+        count=count,
+        batch_id=str(body.batch_id) if body.batch_id else None,
+    )
 
     # Trigger narrative refresh for affected children
     if count > 0:
@@ -344,7 +371,13 @@ def approve_event_endpoint(
     event = approve_event(db, event_id, center_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
-    logger.info(f"Event {event_id} approved for center {center_id}")
+    safe_log(
+        logger, "info", "event.approved",
+        event_id=str(event_id),
+        center_id=str(center_id),
+        event_type=event.event_type,
+        confidence_score=event.confidence_score,
+    )
 
     if event.child_id:
         event_date = (event.event_time or event.created_at).date()
@@ -363,7 +396,12 @@ def reject_event_endpoint(center_id: UUID, event_id: UUID, db: Session = Depends
     event = reject_event(db, event_id, center_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
-    logger.info(f"Event {event_id} rejected for center {center_id}")
+    safe_log(
+        logger, "info", "event.rejected",
+        event_id=str(event_id),
+        center_id=str(center_id),
+        event_type=event.event_type,
+    )
     return ActionResponse(message="Event rejected", event=EventOut.model_validate(event))
 
 

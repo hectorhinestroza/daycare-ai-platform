@@ -7,6 +7,7 @@ Event types: food, nap, potty, kudos, observation, health_check,
 
 import json
 import logging
+import time
 from typing import List, Optional, Tuple
 from uuid import UUID, uuid4
 
@@ -15,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from backend.utils.openai_client import get_openai_client
 from backend.utils.openai_wrapper import call_openai_async_with_logging
+from backend.utils.safe_logging import safe_log
 from schemas.events import (
     ALWAYS_REVIEW_TYPES,
     BaseEvent,
@@ -121,7 +123,12 @@ async def extract_events(
         children_list = ", ".join(known_children)
         user_prompt = f"Known Children in this room: {children_list}\n\n{user_prompt}"
 
-    logger.info(f"Extracting events from transcript ({len(transcript)} chars)")
+    safe_log(
+        logger, "info", "extraction.started",
+        transcript_length=len(transcript),
+        known_children_count=len(known_children) if known_children else 0,
+    )
+    start = time.monotonic()
 
     try:
         response = await call_openai_async_with_logging(
@@ -158,11 +165,18 @@ async def extract_events(
             raw_events = [parsed]
         else:
             # Don't log `parsed` — it contains child-named events.
-            logger.warning(
-                "extraction.unexpected_response_shape parsed_type=%s",
-                type(parsed).__name__,
+            safe_log(
+                logger, "warning", "extraction.unexpected_response_shape",
+                parsed_type=type(parsed).__name__,
             )
             raw_events = []
+
+        response_shape = (
+            "object_with_events" if isinstance(parsed, dict) and "events" in parsed
+            else "list" if isinstance(parsed, list)
+            else "single_event" if isinstance(parsed, dict) and "event_type" in parsed
+            else "unknown"
+        )
 
         # Validate each event against Pydantic schema
         validated_events: List[BaseEvent] = []
@@ -203,26 +217,38 @@ async def extract_events(
                 validated_events.append(event)
             except (ValidationError, KeyError, ValueError) as e:
                 # Don't log `raw_event` — it contains the child name and details.
-                logger.warning(
-                    "extraction.event_dropped error_type=%s",
-                    type(e).__name__,
+                safe_log(
+                    logger, "warning", "extraction.event_dropped",
+                    error_type=type(e).__name__,
                 )
                 continue
 
-        logger.info(
-            "extraction.completed validated=%d raw=%d unrecognized=%d",
-            len(validated_events), len(raw_events), len(unrecognized_names),
+        safe_log(
+            logger, "info", "extraction.completed",
+            duration_ms=int((time.monotonic() - start) * 1000),
+            response_shape=response_shape,
+            raw_event_count=len(raw_events),
+            validated_event_count=len(validated_events),
+            unrecognized_name_count=len(unrecognized_names),
         )
         return validated_events, unrecognized_names
 
     except json.JSONDecodeError:
         # JSONDecodeError messages can include a snippet of the offending JSON,
         # which contains child names — log type only, not the message.
-        logger.error("extraction.invalid_json")
+        safe_log(
+            logger, "error", "extraction.invalid_json",
+            duration_ms=int((time.monotonic() - start) * 1000),
+        )
         raise ValueError("LLM returned invalid JSON") from None
     except Exception as e:
         # exc_info=True is fine: the traceback structure is captured by Sentry's
         # before_send scrubber (frame vars are redacted). Avoid `{e}` in the
         # format string since OpenAI errors can echo prompt content.
-        logger.error("extraction.failed error_type=%s", type(e).__name__, exc_info=True)
+        safe_log(
+            logger, "error", "extraction.failed",
+            duration_ms=int((time.monotonic() - start) * 1000),
+            error_type=type(e).__name__,
+        )
+        logger.error("extraction.failed traceback", exc_info=True)
         raise

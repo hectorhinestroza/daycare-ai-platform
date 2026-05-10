@@ -15,14 +15,21 @@ Why both:
   - safe_log catches PII at the log call site (proactive).
   - pii_scrubber catches PII inside exception payloads Sentry collects
     automatically (defensive — exception locals can pull in transcripts).
+
+request_id contextvar:
+  RequestIDMiddleware sets the current request's ID into a ContextVar
+  on every request. safe_log() auto-reads it and includes request_id in
+  the log record without callsite changes. Background tasks (scheduler)
+  don't have one — the field is omitted in that case.
 """
 
 from __future__ import annotations
 
+import contextvars
 import json
 import logging
 import os
-from typing import Any, Dict, Iterable, MutableMapping
+from typing import Any, Dict, Iterable, MutableMapping, Optional
 
 PII_FIELD_NAMES: frozenset[str] = frozenset(
     {
@@ -39,6 +46,30 @@ PII_FIELD_NAMES: frozenset[str] = frozenset(
 )
 
 REDACTED = "[redacted]"
+
+# Per-request ID, set by RequestIDMiddleware on each incoming request.
+# safe_log() reads this and includes it as `request_id` in every record.
+_request_id_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "dc_request_id", default=None
+)
+
+
+def set_request_id(request_id: Optional[str]) -> contextvars.Token:
+    """Bind a request ID to the current async context. Returns a token
+    that can be passed to `reset_request_id()` to restore the previous
+    value (used by middleware to clean up after the response is sent).
+    """
+    return _request_id_var.set(request_id)
+
+
+def reset_request_id(token: contextvars.Token) -> None:
+    _request_id_var.reset(token)
+
+
+def get_request_id() -> Optional[str]:
+    """Return the request ID for the current async context, or None."""
+    return _request_id_var.get()
+
 
 _LEVEL_MAP = {
     "debug": logging.DEBUG,
@@ -79,7 +110,12 @@ def safe_log(
             fields.pop(k)
         fields["_dropped_pii_fields"] = sorted(pii_violations)
 
-    record = {"event": event, **fields}
+    record = {"event": event}
+    rid = get_request_id()
+    if rid is not None and "request_id" not in fields:
+        record["request_id"] = rid
+    record.update(fields)
+
     log_fn = getattr(logger, level.lower(), logger.info)
     try:
         log_fn(json.dumps(record, default=str))

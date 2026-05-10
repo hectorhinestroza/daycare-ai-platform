@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from backend.config import get_settings
 from backend.storage.database import get_db
 from backend.storage.models import ConsentGateAudit, PendingConsentQueue
+from backend.utils.safe_logging import safe_log
 
 logger = logging.getLogger(__name__)
 
@@ -94,9 +95,21 @@ def get_child_for_processing(
 
     if result is not None:
         # Consent confirmed — child may enter pipeline
+        safe_log(
+            logger, "debug", "consent_gate.passed",
+            child_id=str(child_id),
+            center_id=str(center_id),
+            pipeline_stage=pipeline_stage,
+        )
         return result
 
     # Production: gate blocks — log audit record and queue the event
+    safe_log(
+        logger, "info", "consent_gate.blocked",
+        child_id=str(child_id),
+        center_id=str(center_id),
+        pipeline_stage=pipeline_stage,
+    )
     _log_gate_block(
         db=db,
         child_id=child_id,
