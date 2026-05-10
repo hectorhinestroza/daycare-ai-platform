@@ -88,9 +88,108 @@ collected.
 
 When rotating DSNs, update Railway only — no code change needed.
 
-Phase 2 will add: `PARENT_LINK_SECRET` (for signed bookmark tokens).
+### Auth (Phase 2)
+
+| Variable | Set on | Purpose |
+|---|---|---|
+| `AUTH_TOKEN_SECRET` | backend Railway service | HMAC signing secret for all bearer tokens |
+| `APP_BASE_URL` | backend Railway service | Used to build bootstrap URLs |
+
+Generate the secret once with:
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+**Do not rotate** during the pilot — rotating invalidates every issued
+token simultaneously and locks every user out.
 
 Phase 4 will add: `EXTRACTION_DISABLED` (kill switch).
+
+## Token Issuance (Phase 2 — Director's Day-One Workflow)
+
+**Before users can access the system,** the director must issue bearer
+tokens for every staff member and parent. This is a one-time setup per
+user (each token is good for 90 days).
+
+### How tokens flow
+
+1. Director hits `POST /api/admin/tokens/issue` (authenticated as a
+   director themselves).
+2. Backend returns a `bootstrap_url` like
+   `https://your-app/app?token=<long-signed-string>`.
+3. Director hands the URL to the user (printed handout, SMS, email).
+4. User opens it once on iOS Safari → token is captured to localStorage.
+5. User taps Share → Add to Home Screen → done. From then on, tapping
+   the icon opens the right portal directly with no re-auth.
+
+### Bootstrapping the very first director
+
+Before any director token exists, you can't call `/api/admin/tokens/issue`.
+For the first center, mint a director token manually with a one-shot
+script (run from your laptop pointed at the production DB):
+
+```python
+# scripts/mint_first_director_token.py — one-shot
+from uuid import UUID
+from backend.utils.auth_tokens import generate_token
+
+DIRECTOR_ADMIN_ID = UUID("paste-from-prod-admins-table")
+CENTER_ID = UUID("paste-from-prod-centers-table")
+
+token, payload = generate_token(
+    role="director",
+    sub=DIRECTOR_ADMIN_ID,
+    center_id=CENTER_ID,
+)
+print(f"https://your-app/app?token={token}")
+print(f"Expires: {payload.expires_at}")
+```
+
+A ready-made script lives at `scripts/mint_first_director_token.py`.
+Run it from the repo root with the prod env loaded:
+```bash
+DATABASE_URL='...' \
+AUTH_TOKEN_SECRET='...' \
+APP_BASE_URL='https://your-app.up.railway.app' \
+PYTHONPATH=. \
+python scripts/mint_first_director_token.py \
+    --admin-id <uuid-from-admins-table> \
+    --center-id <uuid-from-centers-table>
+```
+
+Hand the URL to the director. From then on, the director uses
+`/api/admin/tokens/issue` for every other user.
+
+### Revoking a token
+
+When a teacher leaves, a parent loses their phone, etc.:
+
+```bash
+curl -X POST https://your-app/api/admin/tokens/revoke \
+  -H "Authorization: Bearer <director-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"sub": "<user-uuid>", "nonce": "<their-current-nonce>"}'
+```
+
+The nonce comes from the response of the original `issue` call (saved
+when the token was minted). After revoke, the user's bookmark URL
+returns 401 and they see "access expired" — re-issue and hand them a
+new URL.
+
+### Deploy ordering for Phase 2
+
+The Phase 2 PR adds auth gates to all existing endpoints. The deploy
+ritual matters:
+
+1. Run migrations against the prod DB (adds `revoked_token_nonces` table)
+2. Set `AUTH_TOKEN_SECRET` on the backend Railway service
+3. Deploy the backend
+4. **Before deploying the frontend**, mint the first director token
+   (script above) so someone can actually log in
+5. Deploy the frontend
+6. Open the bootstrap URL on the director's phone, Add to Home Screen
+7. Use the director's session to issue tokens for teachers + parents
+   via `POST /api/admin/tokens/issue`
 
 ## Kill Switches
 
@@ -105,6 +204,7 @@ _Filled in by Phase 5. Placeholder._
 - Single-replica only (above)
 - `_command_context` is in-memory and lost on restart (teachers re-issue
   `/child` after a deploy; documented behavior)
-- No real auth in v1 — Phase 2 adds signed bearer tokens; passkeys/JWTs
-  deferred to v2
+- Auth is HMAC-signed bearer tokens stored in localStorage (Phase 2).
+  Vulnerable to XSS in theory; acceptable for pilot scale.
+  Passkeys/WebAuthn deferred to v2.
 - Privacy policy page is a stub until Phase 4
