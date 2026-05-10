@@ -193,7 +193,24 @@ ritual matters:
 
 ## Kill Switches
 
-_Filled in by Phase 4. Placeholder._
+### `EXTRACTION_DISABLED` — pause the AI pipeline
+
+When something is wrong with GPT-4o extraction (bad model output, cost
+spike, etc.) flip this on the backend Railway service:
+
+```
+EXTRACTION_DISABLED=true
+```
+
+Effect:
+- Voice memos and text notes skip transcription + GPT-4o entirely
+- Twilio media is still deleted (zero-retention is independent)
+- Teacher gets a "Recording received — pending review" reply
+- Each affected webhook logs `extraction.disabled` (warning) with the
+  MessageSid for the director to follow up
+
+Flip back to `false` (or remove the var) to resume normal extraction.
+No restart needed beyond Railway's deploy.
 
 ## Acceptance Test Runbook
 
