@@ -13,7 +13,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.storage.database import get_db
-from backend.utils.pilot_auth import require_role
+from backend.utils.auth_tokens import TokenPayload
+from backend.utils.pilot_auth import require_parent_owns_child, require_role
 from backend.storage.onboarding_handlers import (
     add_parent_contact,
     create_child,
@@ -285,10 +286,24 @@ def list_children_endpoint(
 @router.get(
     "/api/children/{center_id}/{child_id}",
     response_model=ChildDetailOut,
-    dependencies=[Depends(require_role("staff"))],
 )
-def get_child_endpoint(center_id: UUID, child_id: UUID, db: Session = Depends(get_db)):
-    """Get a child profile with parent contacts."""
+def get_child_endpoint(
+    center_id: UUID,
+    child_id: UUID,
+    db: Session = Depends(get_db),
+    payload: TokenPayload = Depends(require_role("any")),
+):
+    """Get a child profile with parent contacts.
+
+    Accessible by:
+      - Any staff (teacher or director) at the center
+      - The parent of that child (token must include child_id in child_ids)
+
+    Parents see the same shape as staff for now — pilot accepts this trade
+    in exchange for shipping. v2 should add a parent-scoped schema that
+    elides other parents' contact details.
+    """
+    require_parent_owns_child(child_id, payload)
     child = get_child(db, center_id, child_id)
     if not child:
         raise HTTPException(status_code=404, detail="Child not found")

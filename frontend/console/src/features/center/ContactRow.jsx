@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { issueParentToken, updateContact } from '../../api';
 
 const REL_STYLE = {
@@ -14,18 +14,40 @@ export default function ContactRow({ contact, centerId, addToast, onUpdate }) {
   const [issuing, setIssuing] = useState(false);
   const [bootstrapUrl, setBootstrapUrl] = useState(null);
 
-  // Splits "mint" and "copy" into two separate user gestures: minting is
-  // async (button click → API → state update), then a fresh click on the
-  // Copy button does the synchronous clipboard write. iOS Safari rejects
-  // navigator.clipboard.writeText after any await — this two-step flow
-  // dodges that.
-  async function generateUrl() {
-    if (bootstrapUrl) {
-      // Toggle off if already shown
-      setBootstrapUrl(null);
-      return;
-    }
+  const canIssue = contact.relationship_type === 'parent' || contact.relationship_type === 'guardian';
+
+  // Auto-mint a bootstrap URL on first render for parent/guardian contacts.
+  // The URL is then visible by default in the row's panel — no extra click
+  // needed to see it. The director still has to click Copy to put it in the
+  // clipboard (sync write, iOS Safari requires this).
+  useEffect(() => {
+    if (!canIssue) return;
+    let cancelled = false;
     setIssuing(true);
+    issueParentToken({
+      centerId,
+      parentContactId: contact.id,
+      childIds: [contact.child_id],
+    })
+      .then((result) => {
+        if (!cancelled) setBootstrapUrl(result.bootstrap_url);
+      })
+      .catch((err) => {
+        if (!cancelled) addToast(err.message || 'Failed to mint link', 'error');
+      })
+      .finally(() => {
+        if (!cancelled) setIssuing(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contact.id, contact.child_id, canIssue, centerId]);
+
+  // Force a fresh token (e.g., after revoking the old one).
+  async function regenerateUrl() {
+    setIssuing(true);
+    setBootstrapUrl(null);
     try {
       const result = await issueParentToken({
         centerId,
@@ -117,8 +139,6 @@ export default function ContactRow({ contact, centerId, addToast, onUpdate }) {
     );
   }
 
-  const canIssue = contact.relationship_type === 'parent' || contact.relationship_type === 'guardian';
-
   return (
     <div className="py-2 group">
       <div className="flex items-center gap-3">
@@ -143,18 +163,6 @@ export default function ContactRow({ contact, centerId, addToast, onUpdate }) {
             {contact.email && <span>{contact.email}</span>}
           </div>
         </div>
-        {canIssue && (
-          <button
-            onClick={generateUrl}
-            disabled={issuing}
-            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full hover:bg-surface-container-high text-outline transition-all disabled:opacity-40"
-            title={bootstrapUrl ? 'Hide bootstrap link' : 'Generate bootstrap link for this contact'}
-          >
-            <span className="material-symbols-outlined text-base">
-              {issuing ? 'hourglass_empty' : bootstrapUrl ? 'link_off' : 'link'}
-            </span>
-          </button>
-        )}
         <button
           onClick={startEdit}
           className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full hover:bg-surface-container-high text-outline transition-all"
@@ -164,25 +172,36 @@ export default function ContactRow({ contact, centerId, addToast, onUpdate }) {
         </button>
       </div>
 
-      {/* Inline bootstrap URL panel — visible after the link icon mints a token. */}
-      {bootstrapUrl && (
+      {/* Bootstrap URL panel — auto-shown for parent/guardian contacts.
+          Mint happens on mount; Copy fires sync from a fresh user gesture. */}
+      {canIssue && (
         <div className="mt-2 ml-11 p-3 bg-surface-container-low rounded-lg flex items-center gap-2">
-          <span className="text-xs font-mono text-on-surface truncate flex-1" title={bootstrapUrl}>
-            {bootstrapUrl}
-          </span>
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] uppercase tracking-wider text-on-surface-variant mb-0.5">
+              Parent portal link
+            </p>
+            <span
+              className="text-xs font-mono text-on-surface block truncate"
+              title={bootstrapUrl || ''}
+            >
+              {issuing && !bootstrapUrl ? 'Generating…' : bootstrapUrl || 'Not yet generated'}
+            </span>
+          </div>
           <button
             onClick={copyToClipboard}
-            className="btn-secondary !py-1 !px-3 text-xs shrink-0"
+            disabled={!bootstrapUrl || issuing}
+            className="btn-secondary !py-1 !px-3 text-xs shrink-0 disabled:opacity-40"
           >
             <span className="material-symbols-outlined text-sm mr-1">content_copy</span>
             Copy
           </button>
           <button
-            onClick={() => setBootstrapUrl(null)}
-            className="p-1 rounded-full hover:bg-surface-container-high text-outline shrink-0"
-            title="Hide"
+            onClick={regenerateUrl}
+            disabled={issuing}
+            className="p-1.5 rounded-full hover:bg-surface-container-high text-outline shrink-0 disabled:opacity-40"
+            title="Regenerate (issues a fresh token)"
           >
-            <span className="material-symbols-outlined text-sm">close</span>
+            <span className="material-symbols-outlined text-sm">refresh</span>
           </button>
         </div>
       )}
