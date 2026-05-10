@@ -304,3 +304,21 @@ export async function issueParentToken({ centerId, parentContactId, childIds, ex
   }
   return res.json();
 }
+
+export async function issueTeacherToken({ centerId, teacherId, expiresInDays = 365 }) {
+  const res = await apiFetch('/api/admin/tokens/issue', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      role: 'teacher',
+      sub: teacherId,
+      center_id: centerId,
+      expires_in_days: expiresInDays,
+    }),
+  });
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || `Failed to issue teacher token: ${res.status}`);
+  }
+  return res.json();
+}

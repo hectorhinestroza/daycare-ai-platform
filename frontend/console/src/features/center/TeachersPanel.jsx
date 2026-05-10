@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { createTeacher, updateTeacher } from '../../api';
+import { useEffect, useState } from 'react';
+import { createTeacher, issueTeacherToken, updateTeacher } from '../../api';
 
 export default function TeachersPanel({ centerId, rooms, teachers, addToast, onTeachersChange }) {
   const [showAdd, setShowAdd] = useState(false);
@@ -7,6 +7,50 @@ export default function TeachersPanel({ centerId, rooms, teachers, addToast, onT
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editFields, setEditFields] = useState({});
+  // bootstrapUrls: { [teacherId]: string }  issuingFor: { [teacherId]: bool }
+  const [bootstrapUrls, setBootstrapUrls] = useState({});
+  const [issuingFor, setIssuingFor] = useState({});
+
+  // Auto-mint a bootstrap URL for each teacher on first render.
+  useEffect(() => {
+    let cancelled = false;
+    teachers.forEach((teacher) => {
+      if (bootstrapUrls[teacher.id]) return;
+      setIssuingFor((prev) => ({ ...prev, [teacher.id]: true }));
+      issueTeacherToken({ centerId, teacherId: teacher.id })
+        .then((result) => {
+          if (!cancelled) setBootstrapUrls((prev) => ({ ...prev, [teacher.id]: result.bootstrap_url }));
+        })
+        .catch((err) => {
+          if (!cancelled) addToast(err.message || 'Failed to mint teacher link', 'error');
+        })
+        .finally(() => {
+          if (!cancelled) setIssuingFor((prev) => ({ ...prev, [teacher.id]: false }));
+        });
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teachers.map((t) => t.id).join(','), centerId]);
+
+  async function regenerateTeacherUrl(teacher) {
+    setIssuingFor((prev) => ({ ...prev, [teacher.id]: true }));
+    setBootstrapUrls((prev) => ({ ...prev, [teacher.id]: null }));
+    try {
+      const result = await issueTeacherToken({ centerId, teacherId: teacher.id });
+      setBootstrapUrls((prev) => ({ ...prev, [teacher.id]: result.bootstrap_url }));
+    } catch (err) {
+      addToast(err.message || 'Failed to mint teacher link', 'error');
+    } finally {
+      setIssuingFor((prev) => ({ ...prev, [teacher.id]: false }));
+    }
+  }
+
+  function copyTeacherUrl(url) {
+    navigator.clipboard.writeText(url).then(
+      () => addToast('Copied!'),
+      () => addToast('Copy blocked — long-press the URL to copy manually', 'error'),
+    );
+  }
 
   async function handleAdd(e) {
     e.preventDefault();
@@ -194,46 +238,80 @@ export default function TeachersPanel({ centerId, rooms, teachers, addToast, onT
               );
             }
 
+            const bootstrapUrl = bootstrapUrls[teacher.id];
+            const issuing = issuingFor[teacher.id];
+
             return (
-              <div key={teacher.id} className="japandi-card rounded-lg shadow-ambient p-5 flex items-center gap-4 group card-appear">
-                {/* Avatar */}
-                <div className={`w-11 h-11 rounded-full flex items-center justify-center text-sm font-semibold shrink-0 border border-outline-variant/15 ${
-                  teacher.is_active
-                    ? 'bg-secondary-fixed text-on-secondary-fixed-variant'
-                    : 'bg-surface-container-high text-on-surface-variant'
-                }`}>
-                  {teacher.name.charAt(0).toUpperCase()}
+              <div key={teacher.id} className="japandi-card rounded-lg shadow-ambient p-5 group card-appear">
+                {/* Top row: avatar + info + edit */}
+                <div className="flex items-center gap-4">
+                  <div className={`w-11 h-11 rounded-full flex items-center justify-center text-sm font-semibold shrink-0 border border-outline-variant/15 ${
+                    teacher.is_active
+                      ? 'bg-secondary-fixed text-on-secondary-fixed-variant'
+                      : 'bg-surface-container-high text-on-surface-variant'
+                  }`}>
+                    {teacher.name.charAt(0).toUpperCase()}
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-semibold text-on-surface truncate">{teacher.name}</h4>
+                      {!teacher.is_active && (
+                        <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant">
+                          Inactive
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 mt-0.5 text-xs text-on-surface-variant">
+                      <span>{teacher.phone}</span>
+                      {room && (
+                        <>
+                          <span className="text-on-surface-variant/40">·</span>
+                          <span>{room.name}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => startEdit(teacher)}
+                    className="opacity-0 group-hover:opacity-100 p-2 rounded-full hover:bg-surface-container-high text-outline transition-all"
+                    title="Edit teacher"
+                  >
+                    <span className="material-symbols-outlined text-base">edit</span>
+                  </button>
                 </div>
 
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-semibold text-on-surface truncate">{teacher.name}</h4>
-                    {!teacher.is_active && (
-                      <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant">
-                        Inactive
-                      </span>
-                    )}
+                {/* Bootstrap URL panel */}
+                <div className="mt-3 ml-[60px] p-3 bg-surface-container-low rounded-lg flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] uppercase tracking-wider text-on-surface-variant mb-0.5">
+                      Teacher app link
+                    </p>
+                    <span
+                      className="text-xs font-mono text-on-surface block truncate"
+                      title={bootstrapUrl || ''}
+                    >
+                      {issuing && !bootstrapUrl ? 'Generating…' : bootstrapUrl || 'Not yet generated'}
+                    </span>
                   </div>
-                  <div className="flex items-center gap-3 mt-0.5 text-xs text-on-surface-variant">
-                    <span>{teacher.phone}</span>
-                    {room && (
-                      <>
-                        <span className="text-on-surface-variant/40">·</span>
-                        <span>{room.name}</span>
-                      </>
-                    )}
-                  </div>
+                  <button
+                    onClick={() => copyTeacherUrl(bootstrapUrl)}
+                    disabled={!bootstrapUrl || issuing}
+                    className="btn-secondary !py-1 !px-3 text-xs shrink-0 disabled:opacity-40"
+                  >
+                    <span className="material-symbols-outlined text-sm mr-1">content_copy</span>
+                    Copy
+                  </button>
+                  <button
+                    onClick={() => regenerateTeacherUrl(teacher)}
+                    disabled={issuing}
+                    className="p-1.5 rounded-full hover:bg-surface-container-high text-outline shrink-0 disabled:opacity-40"
+                    title="Regenerate (issues a fresh token)"
+                  >
+                    <span className="material-symbols-outlined text-sm">refresh</span>
+                  </button>
                 </div>
-
-                {/* Edit button */}
-                <button
-                  onClick={() => startEdit(teacher)}
-                  className="opacity-0 group-hover:opacity-100 p-2 rounded-full hover:bg-surface-container-high text-outline transition-all"
-                  title="Edit teacher"
-                >
-                  <span className="material-symbols-outlined text-base">edit</span>
-                </button>
               </div>
             );
           })}
