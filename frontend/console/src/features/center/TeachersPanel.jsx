@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { createTeacher, issueTeacherToken, updateTeacher } from '../../api';
+import { createTeacher, deleteTeacher, issueTeacherToken, updateTeacher } from '../../api';
 
 export default function TeachersPanel({ centerId, rooms, teachers, addToast, onTeachersChange }) {
   const [showAdd, setShowAdd] = useState(false);
@@ -76,7 +76,6 @@ export default function TeachersPanel({ centerId, rooms, teachers, addToast, onT
       name: teacher.name,
       phone: teacher.phone,
       room_id: teacher.room_id || '',
-      is_active: teacher.is_active,
     });
     setEditingId(teacher.id);
   }
@@ -87,7 +86,6 @@ export default function TeachersPanel({ centerId, rooms, teachers, addToast, onT
     if (editFields.name !== teacher.name) updates.name = editFields.name;
     if (editFields.phone !== teacher.phone) updates.phone = editFields.phone;
     if (editFields.room_id !== (teacher.room_id || '')) updates.room_id = editFields.room_id || null;
-    if (editFields.is_active !== teacher.is_active) updates.is_active = editFields.is_active;
 
     if (Object.keys(updates).length === 0) {
       setEditingId(null);
@@ -97,6 +95,21 @@ export default function TeachersPanel({ centerId, rooms, teachers, addToast, onT
     try {
       await updateTeacher(centerId, teacherId, updates);
       addToast('Teacher updated');
+      setEditingId(null);
+      onTeachersChange();
+    } catch (err) {
+      addToast(err.message, 'error');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeTeacher(teacher) {
+    if (!confirm(`Remove ${teacher.name}? They'll be hidden from the list and unable to post via WhatsApp. Their past events stay in the audit trail.`)) return;
+    setSaving(true);
+    try {
+      await deleteTeacher(centerId, teacher.id);
+      addToast(`${teacher.name} removed`);
       setEditingId(null);
       onTeachersChange();
     } catch (err) {
@@ -219,16 +232,16 @@ export default function TeachersPanel({ centerId, rooms, teachers, addToast, onT
                       </select>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4 pt-3">
-                    <label className="flex items-center gap-2 cursor-pointer text-sm">
-                      <input
-                        type="checkbox"
-                        checked={editFields.is_active}
-                        onChange={(e) => setEditFields({ ...editFields, is_active: e.target.checked })}
-                        className="accent-primary"
-                      />
-                      <span className="text-on-surface-variant">Active</span>
-                    </label>
+                  <div className="flex items-center gap-2 pt-3">
+                    <button
+                      onClick={() => removeTeacher(teacher)}
+                      className="flex items-center gap-1.5 text-xs text-error hover:text-on-error-container hover:bg-error-container/40 px-3 py-2 rounded transition-colors"
+                      disabled={saving}
+                      title="Remove this teacher"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">person_remove</span>
+                      Remove
+                    </button>
                     <div className="ml-auto flex gap-2">
                       <button onClick={() => setEditingId(null)} className="btn-secondary !py-1.5 !px-4 text-xs" disabled={saving}>Cancel</button>
                       <button onClick={() => saveEdit(teacher.id)} className="btn-primary !py-1.5 !px-4 text-xs" disabled={saving}>Save</button>
@@ -245,23 +258,12 @@ export default function TeachersPanel({ centerId, rooms, teachers, addToast, onT
               <div key={teacher.id} className="japandi-card rounded-lg shadow-ambient p-5 group card-appear">
                 {/* Top row: avatar + info + edit */}
                 <div className="flex items-center gap-4">
-                  <div className={`w-11 h-11 rounded-full flex items-center justify-center text-sm font-semibold shrink-0 border border-outline-variant/15 ${
-                    teacher.is_active
-                      ? 'bg-secondary-fixed text-on-secondary-fixed-variant'
-                      : 'bg-surface-container-high text-on-surface-variant'
-                  }`}>
+                  <div className="w-11 h-11 rounded-full flex items-center justify-center text-sm font-semibold shrink-0 border border-outline-variant/15 bg-secondary-fixed text-on-secondary-fixed-variant">
                     {teacher.name.charAt(0).toUpperCase()}
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h4 className="font-semibold text-on-surface truncate">{teacher.name}</h4>
-                      {!teacher.is_active && (
-                        <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant">
-                          Inactive
-                        </span>
-                      )}
-                    </div>
+                    <h4 className="font-semibold text-on-surface truncate">{teacher.name}</h4>
                     <div className="flex items-center gap-3 mt-0.5 text-xs text-on-surface-variant">
                       <span>{teacher.phone}</span>
                       {room && (
