@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from backend.storage.activity_handlers import get_activity_log
 from backend.storage.database import get_db
 from backend.storage.models import Admin, Teacher
+from backend.utils.pilot_auth import require_role
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +89,11 @@ def _serialize_log(entry, db: Session) -> dict:
 # ─── Endpoint ─────────────────────────────────────────────────
 
 
-@router.get("/{center_id}", response_model=List[ActivityLogOut])
+@router.get(
+    "/{center_id}",
+    response_model=List[ActivityLogOut],
+    dependencies=[Depends(require_role("staff"))],
+)
 def list_activity_log(
     center_id: UUID,
     event_id: Optional[UUID] = None,

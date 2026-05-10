@@ -4,6 +4,7 @@ import './index.css'
 import App from './App.jsx'
 import ParentPortal from './portals/parent/ParentPortal.jsx'
 import ConsentPage from './portals/ConsentPortal/ConsentPage.jsx'
+import Dispatcher from './portals/Dispatcher.jsx'
 import { initSentry } from './sentry.js'
 
 initSentry();
@@ -11,10 +12,15 @@ initSentry();
 function Router() {
   const path = window.location.pathname;
 
-  // /consent/:token
+  // /consent/:token — magic-link consent flow (no bearer auth)
   const consentMatch = path.match(/^\/consent\/([^/]+)/);
   if (consentMatch) {
     return <ConsentPage token={consentMatch[1]} />;
+  }
+
+  // /app — PWA dispatcher; captures bootstrap token and routes by role
+  if (path === '/app' || path === '/app/') {
+    return <Dispatcher />;
   }
 
   // /parent/:centerId/:childId
@@ -35,8 +41,9 @@ function Router() {
     return <App forcedRole="director" centerId={directorMatch[1]} />;
   }
 
-  // Fallback: legacy ?center= query param with role toggle
-  return <App />;
+  // Anything else (including /) → dispatcher; it'll redirect or show
+  // the "expired link" message based on stored token.
+  return <Dispatcher />;
 }
 
 createRoot(document.getElementById('root')).render(

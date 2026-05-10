@@ -15,6 +15,8 @@ from sqlalchemy.orm import Session
 
 from backend.storage.database import get_db
 from backend.storage.events_handlers import get_photos_for_child
+from backend.utils.auth_tokens import TokenPayload
+from backend.utils.pilot_auth import require_parent_owns_child, require_role
 from backend.utils.s3 import generate_presigned_url
 
 logger = logging.getLogger(__name__)
@@ -37,8 +39,13 @@ def parent_photo_feed(
     child_id: UUID,
     limit: int = 50,
     db: Session = Depends(get_db),
+    payload: TokenPayload = Depends(require_role("any")),
 ):
-    """Return recent photos for a child with 1-hour presigned URLs."""
+    """Return recent photos for a child with 1-hour presigned URLs.
+
+    Accessible by the parent of the child or any staff at the center.
+    """
+    require_parent_owns_child(child_id, payload)
     photos = get_photos_for_child(db, center_id, child_id, limit=limit)
     return [
         PhotoOut(

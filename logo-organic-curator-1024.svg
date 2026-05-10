@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  
+  
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fef8f5"></stop>
+      <stop offset="100%" stop-color="#f8f3ef"></stop>
+    </linearGradient>
+    <linearGradient id="terracotta" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8a4f36"></stop>
+      <stop offset="100%" stop-color="#d38b6e"></stop>
+    </linearGradient>
+    <radialGradient id="sun" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffdbce"></stop>
+      <stop offset="100%" stop-color="#d38b6e"></stop>
+    </radialGradient>
+  </defs>
+
+  
+  <rect width="1024" height="1024" rx="192" ry="192" fill="url(#bg)"></rect>
+
+  
+  <ellipse cx="780" cy="820" rx="380" ry="280" fill="#d6e7d5" opacity="0.35"></ellipse>
+  <ellipse cx="200" cy="240" rx="320" ry="260" fill="#ffdbce" opacity="0.4"></ellipse>
+
+  
+  <circle cx="512" cy="380" r="76" fill="url(#sun)" opacity="0.95"></circle>
+
+  
+  
+  <path d="M 360 720&#xA;           C 300 620, 320 480, 440 420&#xA;           C 480 520, 480 640, 420 740&#xA;           C 400 760, 380 750, 360 720 Z" fill="#536254" opacity="0.92"></path>
+
+  
+  <path d="M 664 720&#xA;           C 724 620, 704 480, 584 420&#xA;           C 544 520, 544 640, 604 740&#xA;           C 624 760, 644 750, 664 720 Z" fill="url(#terracotta)"></path>
+
+  
+  <path d="M 512 700&#xA;           C 500 686, 478 686, 478 706&#xA;           C 478 724, 502 740, 512 752&#xA;           C 522 740, 546 724, 546 706&#xA;           C 546 686, 524 686, 512 700 Z" fill="#8a4f36"></path>
+
+  
+</svg>

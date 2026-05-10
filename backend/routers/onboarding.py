@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.storage.database import get_db
+from backend.utils.pilot_auth import require_role
 from backend.storage.onboarding_handlers import (
     add_parent_contact,
     create_child,
@@ -152,7 +153,12 @@ class ChildDetailOut(ChildOut):
 # ─── Room Endpoints ───────────────────────────────────────────
 
 
-@router.post("/api/rooms/{center_id}", response_model=RoomOut, status_code=201)
+@router.post(
+    "/api/rooms/{center_id}",
+    response_model=RoomOut,
+    status_code=201,
+    dependencies=[Depends(require_role("director"))],
+)
 def create_room_endpoint(center_id: UUID, body: RoomCreate, db: Session = Depends(get_db)):
     """Create a new room."""
     room = create_room(db, center_id, body.name)
@@ -160,13 +166,21 @@ def create_room_endpoint(center_id: UUID, body: RoomCreate, db: Session = Depend
     return room
 
 
-@router.get("/api/rooms/{center_id}", response_model=List[RoomOut])
+@router.get(
+    "/api/rooms/{center_id}",
+    response_model=List[RoomOut],
+    dependencies=[Depends(require_role("staff"))],
+)
 def list_rooms_endpoint(center_id: UUID, db: Session = Depends(get_db)):
     """List all rooms for a center."""
     return list_rooms(db, center_id)
 
 
-@router.patch("/api/rooms/{center_id}/{room_id}", response_model=RoomOut)
+@router.patch(
+    "/api/rooms/{center_id}/{room_id}",
+    response_model=RoomOut,
+    dependencies=[Depends(require_role("director"))],
+)
 def update_room_endpoint(center_id: UUID, room_id: UUID, body: RoomCreate, db: Session = Depends(get_db)):
     """Rename a room."""
     room = update_room(db, center_id, room_id, body.name)
@@ -175,7 +189,11 @@ def update_room_endpoint(center_id: UUID, room_id: UUID, body: RoomCreate, db: S
     return room
 
 
-@router.delete("/api/rooms/{center_id}/{room_id}", status_code=204)
+@router.delete(
+    "/api/rooms/{center_id}/{room_id}",
+    status_code=204,
+    dependencies=[Depends(require_role("director"))],
+)
 def delete_room_endpoint(center_id: UUID, room_id: UUID, db: Session = Depends(get_db)):
     """Delete a room."""
     if not delete_room(db, center_id, room_id):
@@ -185,7 +203,12 @@ def delete_room_endpoint(center_id: UUID, room_id: UUID, db: Session = Depends(g
 # ─── Teacher Endpoints ────────────────────────────────────────
 
 
-@router.post("/api/teachers/{center_id}", response_model=TeacherOut, status_code=201)
+@router.post(
+    "/api/teachers/{center_id}",
+    response_model=TeacherOut,
+    status_code=201,
+    dependencies=[Depends(require_role("director"))],
+)
 def create_teacher_endpoint(center_id: UUID, body: TeacherCreate, db: Session = Depends(get_db)):
     """Register a new teacher."""
     teacher = create_teacher(db, center_id, body.name, body.phone, body.room_id)
@@ -193,13 +216,21 @@ def create_teacher_endpoint(center_id: UUID, body: TeacherCreate, db: Session = 
     return teacher
 
 
-@router.get("/api/teachers/{center_id}", response_model=List[TeacherOut])
+@router.get(
+    "/api/teachers/{center_id}",
+    response_model=List[TeacherOut],
+    dependencies=[Depends(require_role("staff"))],
+)
 def list_teachers_endpoint(center_id: UUID, db: Session = Depends(get_db)):
     """List all active teachers for a center."""
     return list_teachers(db, center_id)
 
 
-@router.patch("/api/teachers/{center_id}/{teacher_id}", response_model=TeacherOut)
+@router.patch(
+    "/api/teachers/{center_id}/{teacher_id}",
+    response_model=TeacherOut,
+    dependencies=[Depends(require_role("director"))],
+)
 def update_teacher_endpoint(center_id: UUID, teacher_id: UUID, body: TeacherUpdate, db: Session = Depends(get_db)):
     """Update a teacher (name, phone, room assignment, active status)."""
     updates = body.model_dump(exclude_unset=True)
@@ -214,7 +245,12 @@ def update_teacher_endpoint(center_id: UUID, teacher_id: UUID, body: TeacherUpda
 # ─── Children Endpoints ───────────────────────────────────────
 
 
-@router.post("/api/children/{center_id}", response_model=ChildOut, status_code=201)
+@router.post(
+    "/api/children/{center_id}",
+    response_model=ChildOut,
+    status_code=201,
+    dependencies=[Depends(require_role("director"))],
+)
 def create_child_endpoint(center_id: UUID, body: ChildCreate, db: Session = Depends(get_db)):
     """Enroll a new child."""
     child = create_child(
@@ -231,7 +267,11 @@ def create_child_endpoint(center_id: UUID, body: ChildCreate, db: Session = Depe
     return child
 
 
-@router.get("/api/children/{center_id}", response_model=List[ChildOut])
+@router.get(
+    "/api/children/{center_id}",
+    response_model=List[ChildOut],
+    dependencies=[Depends(require_role("staff"))],
+)
 def list_children_endpoint(
     center_id: UUID,
     room_id: Optional[UUID] = None,
@@ -242,7 +282,11 @@ def list_children_endpoint(
     return list_children(db, center_id, room_id=room_id, status=status)
 
 
-@router.get("/api/children/{center_id}/{child_id}", response_model=ChildDetailOut)
+@router.get(
+    "/api/children/{center_id}/{child_id}",
+    response_model=ChildDetailOut,
+    dependencies=[Depends(require_role("staff"))],
+)
 def get_child_endpoint(center_id: UUID, child_id: UUID, db: Session = Depends(get_db)):
     """Get a child profile with parent contacts."""
     child = get_child(db, center_id, child_id)
@@ -255,7 +299,11 @@ def get_child_endpoint(center_id: UUID, child_id: UUID, db: Session = Depends(ge
     )
 
 
-@router.patch("/api/children/{center_id}/{child_id}", response_model=ChildOut)
+@router.patch(
+    "/api/children/{center_id}/{child_id}",
+    response_model=ChildOut,
+    dependencies=[Depends(require_role("director"))],
+)
 def update_child_endpoint(center_id: UUID, child_id: UUID, body: ChildUpdate, db: Session = Depends(get_db)):
     """Update a child's profile."""
     updates = body.model_dump(exclude_unset=True)
@@ -267,7 +315,11 @@ def update_child_endpoint(center_id: UUID, child_id: UUID, body: ChildUpdate, db
     return child
 
 
-@router.delete("/api/children/{center_id}/{child_id}", status_code=204)
+@router.delete(
+    "/api/children/{center_id}/{child_id}",
+    status_code=204,
+    dependencies=[Depends(require_role("director"))],
+)
 def delete_child_endpoint(center_id: UUID, child_id: UUID, db: Session = Depends(get_db)):
     """Delete a child."""
     if not delete_child(db, center_id, child_id):
@@ -277,7 +329,12 @@ def delete_child_endpoint(center_id: UUID, child_id: UUID, db: Session = Depends
 # ─── Parent Contact Endpoints ─────────────────────────────────
 
 
-@router.post("/api/children/{center_id}/{child_id}/contacts", response_model=ContactOut, status_code=201)
+@router.post(
+    "/api/children/{center_id}/{child_id}/contacts",
+    response_model=ContactOut,
+    status_code=201,
+    dependencies=[Depends(require_role("director"))],
+)
 def add_contact_endpoint(center_id: UUID, child_id: UUID, body: ContactCreate, db: Session = Depends(get_db)):
     """Add a parent or emergency contact to a child."""
     contact = add_parent_contact(
@@ -297,13 +354,21 @@ def add_contact_endpoint(center_id: UUID, child_id: UUID, body: ContactCreate, d
     return contact
 
 
-@router.get("/api/children/{center_id}/{child_id}/contacts", response_model=List[ContactOut])
+@router.get(
+    "/api/children/{center_id}/{child_id}/contacts",
+    response_model=List[ContactOut],
+    dependencies=[Depends(require_role("staff"))],
+)
 def list_contacts_endpoint(center_id: UUID, child_id: UUID, db: Session = Depends(get_db)):
     """List all contacts for a child."""
     return list_parent_contacts(db, center_id, child_id)
 
 
-@router.patch("/api/contacts/{center_id}/{contact_id}", response_model=ContactOut)
+@router.patch(
+    "/api/contacts/{center_id}/{contact_id}",
+    response_model=ContactOut,
+    dependencies=[Depends(require_role("director"))],
+)
 def update_contact_endpoint(center_id: UUID, contact_id: UUID, body: ContactUpdate, db: Session = Depends(get_db)):
     """Update a parent contact."""
     updates = body.model_dump(exclude_unset=True)

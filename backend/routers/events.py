@@ -22,6 +22,8 @@ from sqlalchemy.orm import Session
 
 from backend.services.narrative import generate_narrative
 from backend.storage.database import SessionLocal, get_db
+from backend.utils.auth_tokens import TokenPayload
+from backend.utils.pilot_auth import require_parent_owns_child, require_role
 from backend.storage.events_handlers import (
     approve_event,
     batch_approve_events,
@@ -187,21 +189,33 @@ class BatchApproveResponse(BaseModel):
 # ─── Endpoints (order matters — specific paths before catch-all) ──
 
 
-@router.get("/pending/teacher/{center_id}", response_model=List[EventOut])
+@router.get(
+    "/pending/teacher/{center_id}",
+    response_model=List[EventOut],
+    dependencies=[Depends(require_role("staff"))],
+)
 def list_teacher_queue(center_id: UUID, db: Session = Depends(get_db)):
     """Get all pending events for teacher review."""
     events = get_events_pending_teacher(db, center_id)
     return events
 
 
-@router.get("/pending/director/{center_id}", response_model=List[EventOut])
+@router.get(
+    "/pending/director/{center_id}",
+    response_model=List[EventOut],
+    dependencies=[Depends(require_role("staff"))],
+)
 def list_director_queue(center_id: UUID, db: Session = Depends(get_db)):
     """Get all flagged events for director review."""
     events = get_events_pending_director(db, center_id)
     return events
 
 
-@router.get("/history/{center_id}", response_model=List[EventOut])
+@router.get(
+    "/history/{center_id}",
+    response_model=List[EventOut],
+    dependencies=[Depends(require_role("staff"))],
+)
 def list_event_history(
     center_id: UUID,
     status: Optional[str] = None,
@@ -214,7 +228,11 @@ def list_event_history(
     return events
 
 
-@router.post("/{center_id}/batch-approve", response_model=BatchApproveResponse)
+@router.post(
+    "/{center_id}/batch-approve",
+    response_model=BatchApproveResponse,
+    dependencies=[Depends(require_role("staff"))],
+)
 def batch_approve_endpoint(
     center_id: UUID,
     body: BatchApproveRequest,
@@ -282,8 +300,15 @@ def parent_feed(
     limit: int = 50,
     offset: int = 0,
     db: Session = Depends(get_db),
+    payload: TokenPayload = Depends(require_role("any")),
 ):
-    """Parent feed — approved events for a specific child."""
+    """Approved events for a specific child.
+
+    Accessible by:
+      - The parent of that child (token must include child_id in child_ids)
+      - Any staff (teacher or director) at the center
+    """
+    require_parent_owns_child(child_id, payload)
     events = get_approved_events_for_child(db, center_id, child_id, limit=limit, offset=offset)
     return events
 
@@ -291,7 +316,11 @@ def parent_feed(
 # ─── Catch-all routes (must come after specific paths) ────────
 
 
-@router.get("/{center_id}/{event_id}", response_model=EventOut)
+@router.get(
+    "/{center_id}/{event_id}",
+    response_model=EventOut,
+    dependencies=[Depends(require_role("staff"))],
+)
 def get_event_detail(center_id: UUID, event_id: UUID, db: Session = Depends(get_db)):
     """Get a single event by ID, scoped to center."""
     event = get_event(db, event_id, center_id)
@@ -300,7 +329,11 @@ def get_event_detail(center_id: UUID, event_id: UUID, db: Session = Depends(get_
     return event
 
 
-@router.post("/{center_id}/{event_id}/approve", response_model=ActionResponse)
+@router.post(
+    "/{center_id}/{event_id}/approve",
+    response_model=ActionResponse,
+    dependencies=[Depends(require_role("staff"))],
+)
 def approve_event_endpoint(
     center_id: UUID,
     event_id: UUID,
@@ -320,7 +353,11 @@ def approve_event_endpoint(
     return ActionResponse(message="Event approved", event=EventOut.model_validate(event))
 
 
-@router.post("/{center_id}/{event_id}/reject", response_model=ActionResponse)
+@router.post(
+    "/{center_id}/{event_id}/reject",
+    response_model=ActionResponse,
+    dependencies=[Depends(require_role("staff"))],
+)
 def reject_event_endpoint(center_id: UUID, event_id: UUID, db: Session = Depends(get_db)):
     """Reject a pending event."""
     event = reject_event(db, event_id, center_id)
@@ -330,7 +367,11 @@ def reject_event_endpoint(center_id: UUID, event_id: UUID, db: Session = Depends
     return ActionResponse(message="Event rejected", event=EventOut.model_validate(event))
 
 
-@router.patch("/{center_id}/{event_id}", response_model=ActionResponse)
+@router.patch(
+    "/{center_id}/{event_id}",
+    response_model=ActionResponse,
+    dependencies=[Depends(require_role("staff"))],
+)
 def edit_event_endpoint(
     center_id: UUID,
     event_id: UUID,
