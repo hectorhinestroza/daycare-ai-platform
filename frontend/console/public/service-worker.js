@@ -74,12 +74,38 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(buildManifestResponse());
 });
 
-function buildManifestResponse() {
-  const startUrl = cachedToken
-    ? `/app?token=${encodeURIComponent(cachedToken)}`
-    : STATIC_FALLBACK_START_URL;
+// 16 hex chars (64 bits of entropy) is plenty for a per-token identifier
+// and keeps the manifest body small.
+async function hashToken(token) {
+  if (!self.crypto?.subtle) return null;
+  try {
+    const data = new TextEncoder().encode(token);
+    const digest = await self.crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(digest))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('')
+      .slice(0, 16);
+  } catch {
+    return null;
+  }
+}
 
-  const manifest = { ...BASE_MANIFEST, start_url: startUrl };
+async function buildManifestResponse() {
+  const token = cachedToken;
+  let id = '/';                              // default for the no-token fallback
+  let startUrl = STATIC_FALLBACK_START_URL;
+
+  if (token) {
+    const hash = await hashToken(token);
+    // `id` makes iOS treat each user's PWA as a distinct app, so installing
+    // a parent PWA on the same device that already has the director PWA
+    // doesn't just add a duplicate shortcut to the existing app. Without
+    // this, iOS uses scope-based identity and merges PWAs that share scope.
+    id = hash ? `/u/${hash}` : `/u`;
+    startUrl = `/app?token=${encodeURIComponent(token)}`;
+  }
+
+  const manifest = { ...BASE_MANIFEST, id, start_url: startUrl };
 
   return new Response(JSON.stringify(manifest), {
     headers: {
