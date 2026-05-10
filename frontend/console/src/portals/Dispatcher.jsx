@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import {
   apiFetch,
   clearAuth,
-  getCachedRole,
   getStoredToken,
   setCachedRole,
   setStoredToken,
 } from '../api/client.js';
+import { installDynamicManifest } from '../utils/dynamicManifest.js';
 
 // /app — first thing users hit when they tap the home-screen icon or open
 // a fresh bootstrap URL. Captures ?token= from the URL on first visit,
@@ -60,12 +60,17 @@ export default function Dispatcher() {
         window.history.replaceState(null, '', url.pathname + url.search);
       }
 
-      // 2. Optimistic redirect using cached role for instant cold start.
-      //    The verify call below corrects course if the token is bad.
-      const cached = getCachedRole();
-      const haveToken = !!getStoredToken();
+      // 2. Install per-user manifest (any token, fresh or stored). When the
+      //    user does Add to Home Screen, iOS reads this manifest and bakes
+      //    `start_url=/app?token=<theirs>` into the home-screen icon. Solves
+      //    the iOS standalone-PWA / Safari localStorage isolation issue.
+      const activeToken = tokenInUrl || getStoredToken();
+      if (activeToken) {
+        installDynamicManifest(activeToken);
+      }
 
-      if (!haveToken) {
+      // 3. Bail early if we have no token at all.
+      if (!getStoredToken()) {
         setState({
           status: 'expired',
           message:
@@ -74,7 +79,7 @@ export default function Dispatcher() {
         return;
       }
 
-      // 3. Verify with the backend.
+      // 4. Verify with the backend.
       const payload = await verifyToken();
       if (!payload) {
         clearAuth();
@@ -86,7 +91,7 @@ export default function Dispatcher() {
         return;
       }
 
-      // 4. Cache role for next cold start, then redirect.
+      // 5. Cache role for next cold start, then redirect.
       setCachedRole(payload.role);
       const target = decideTargetRoute(payload);
       if (!target) {
