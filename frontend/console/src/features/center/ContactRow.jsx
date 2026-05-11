@@ -196,6 +196,15 @@ export default function ContactRow({ contact, centerId, addToast, onUpdate }) {
             Copy
           </button>
           <button
+            onClick={() => window.open(bootstrapUrl, '_blank', 'noopener,noreferrer')}
+            disabled={!bootstrapUrl || issuing}
+            className="btn-secondary !py-1 !px-3 text-xs shrink-0 disabled:opacity-40"
+            title="Open the parent portal in a new tab"
+          >
+            <span className="material-symbols-outlined text-sm mr-1">open_in_new</span>
+            Open
+          </button>
+          <button
             onClick={regenerateUrl}
             disabled={issuing}
             className="p-1.5 rounded-full hover:bg-surface-container-high text-outline shrink-0 disabled:opacity-40"
