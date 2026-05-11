@@ -61,6 +61,7 @@ from backend.middleware import (
 from backend.routers.activity import router as activity_router
 from backend.routers.auth import router as auth_router
 from backend.routers.consent import router as consent_router
+from backend.routers.debug import router as debug_router
 from backend.routers.events import router as events_router
 from backend.routers.narratives import router as narratives_router
 from backend.routers.onboarding import router as onboarding_router
@@ -107,6 +108,7 @@ app.add_middleware(
 app.include_router(activity_router)
 app.include_router(auth_router)
 app.include_router(consent_router)
+app.include_router(debug_router)
 app.include_router(events_router)
 app.include_router(narratives_router)
 app.include_router(onboarding_router)
