@@ -70,6 +70,19 @@ def get_child_for_processing(
 
     is_production = environment.lower() == "production"
 
+    # Pilot Phase 1 override — flipping CONSENT_GATE_DISABLED=true makes the
+    # gate behave like dev even when ENVIRONMENT=production. Used for the
+    # 2-day teacher-only test before parents are onboarded. Flip back to
+    # false before any parent receives a bootstrap URL.
+    settings = get_settings()
+    if is_production and settings.consent_gate_disabled:
+        logger.warning(
+            f"CONSENT_GATE_DISABLED is set — bypassing consent in production "
+            f"for child {child_id} (stage: {pipeline_stage}). This must be "
+            f"unset before parents are onboarded."
+        )
+        is_production = False
+
     if not is_production:
         # Dev/sandbox bypass — query the children table directly via ORM.
         # Skipping the consent view here also keeps SQLite-backed unit tests

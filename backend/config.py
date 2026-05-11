@@ -49,6 +49,13 @@ class Settings(BaseSettings):
     # noticeably wrong with the AI pipeline.
     extraction_disabled: bool = False
 
+    # Pilot Phase 1 override — when True, the consent gate falls through to
+    # the dev-bypass path regardless of ENVIRONMENT. Used during the 2-day
+    # teacher-only test before parents are onboarded with paper consent.
+    # Every bypass is logged at WARNING level so they're greppable. Flip
+    # back to False (or remove) before any parent receives a bootstrap URL.
+    consent_gate_disabled: bool = False
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

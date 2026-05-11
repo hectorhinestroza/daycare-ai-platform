@@ -193,6 +193,63 @@ ritual matters:
 
 ## Kill Switches
 
+### `CONSENT_GATE_DISABLED` — Phase 1 (teachers-only) override
+
+For the 2-day teacher-only pilot phase BEFORE parents are onboarded with
+paper consent, set on the backend Railway service:
+
+```
+CONSENT_GATE_DISABLED=true
+```
+
+Effect:
+- Voice memos for kids without recorded consent flow normally into the
+  events table (instead of going to `pending_consent_queue`)
+- Director can monitor activity through their console and the
+  "Preview parent view" button on each child
+- Every bypass logs `CONSENT_GATE_DISABLED is set — bypassing consent…`
+  at WARNING level for compliance grep
+
+**Flip back to `false` before any parent receives a bootstrap URL.**
+By the time you onboard parents in Phase 2, the daycare director should
+have collected paper consent forms and either inserted them into
+`parental_consent` rows manually OR sent the parent through the
+`/consent/<token>` magic-link flow.
+
+### Phase 1 → Phase 2 data wipe
+
+After the 2-day pilot, run this against the Railway Postgres to start
+clean before parents arrive (preserves the structural records — center,
+rooms, teachers, admins — and only wipes the pilot's event/photo/log data):
+
+```sql
+BEGIN;
+
+-- Children stay (need their UUIDs for re-enrollment), but if you want a
+-- clean slate including children:
+--   DELETE FROM parental_consent;
+--   DELETE FROM parent_contacts;
+--   DELETE FROM children;
+
+-- Pilot-generated activity
+DELETE FROM activity_logs;
+DELETE FROM daily_narratives;
+DELETE FROM photos;
+DELETE FROM pending_photos;
+DELETE FROM events;
+DELETE FROM pending_events;
+DELETE FROM processed_messages;
+DELETE FROM pending_consent_queue;
+DELETE FROM consent_gate_audit;
+DELETE FROM ai_api_logs;
+
+COMMIT;
+```
+
+Run from the Railway Postgres Query tab, or via `psql "$RAILWAY_DB"`.
+Then set `CONSENT_GATE_DISABLED=false`, restart the backend, and onboard
+parents per the standard Phase 2 procedure.
+
 ### `EXTRACTION_DISABLED` — pause the AI pipeline
 
 When something is wrong with GPT-4o extraction (bad model output, cost

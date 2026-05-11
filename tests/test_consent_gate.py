@@ -159,6 +159,50 @@ class TestGetChildForProcessing:
 # ─── Tests: require_consent FastAPI dependency ─────────────────
 
 
+class TestConsentGateDisabledOverride:
+    """CONSENT_GATE_DISABLED=true bypasses the gate even in production."""
+
+    def test_bypass_returns_child_in_production_when_flag_set(self):
+        mock_child = MagicMock()
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = mock_child
+
+        mock_settings = MagicMock()
+        mock_settings.consent_gate_disabled = True
+
+        with patch("backend.utils.consent_gate.get_settings", return_value=mock_settings):
+            result = get_child_for_processing(
+                child_id=uuid.uuid4(),
+                center_id=uuid.uuid4(),
+                db=mock_db,
+                environment="production",
+            )
+
+        # Bypass returned the child via ORM (mock_db.query path), not the
+        # production consent view path.
+        assert result is mock_child
+        mock_db.query.assert_called()
+
+    def test_no_bypass_when_flag_unset_in_production(self):
+        """With the flag false (default), production gate still enforces."""
+        mock_db = MagicMock()
+        # Consent view returns nothing → production gate would block
+        mock_db.execute.return_value.fetchone.return_value = None
+
+        mock_settings = MagicMock()
+        mock_settings.consent_gate_disabled = False
+
+        with patch("backend.utils.consent_gate.get_settings", return_value=mock_settings):
+            result = get_child_for_processing(
+                child_id=uuid.uuid4(),
+                center_id=uuid.uuid4(),
+                db=mock_db,
+                environment="production",
+            )
+
+        assert result is None  # production blocked
+
+
 class TestRequireConsentDependency:
     """require_consent() FastAPI dependency returns 403 on gate block in production."""
 
@@ -172,6 +216,7 @@ class TestRequireConsentDependency:
 
         mock_settings = MagicMock()
         mock_settings.environment = "production"
+        mock_settings.consent_gate_disabled = False  # gate must enforce
 
         with patch("backend.utils.consent_gate.get_settings", return_value=mock_settings):
             with pytest.raises(HTTPException) as exc_info:
