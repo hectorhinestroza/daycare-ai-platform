@@ -9,7 +9,7 @@ export default function AddChildModal({ centerId, rooms, addToast, onClose, onCr
     allergies: '',
     medical_notes: '',
   });
-  const [contact, setContact] = useState({ name: '', phone: '', email: '' });
+  const [contact, setContact] = useState({ name: '', countryCode: '+1', phone: '', email: '' });
   const [saving, setSaving] = useState(false);
 
   async function handleSubmit(e) {
@@ -32,7 +32,7 @@ export default function AddChildModal({ centerId, rooms, addToast, onClose, onCr
           is_primary: true,
           can_pickup: true,
         };
-        if (contact.phone.trim()) contactData.phone = contact.phone.trim();
+        if (contact.phone.trim()) contactData.phone = `${contact.countryCode}${contact.phone.trim()}`;
         if (contact.email.trim()) contactData.email = contact.email.trim();
         await addContact(centerId, child.id, contactData);
       }
@@ -135,22 +135,30 @@ export default function AddChildModal({ centerId, rooms, addToast, onClose, onCr
                 placeholder="Parent / guardian name"
                 className={inputClass}
               />
-              <div className="grid grid-cols-2 gap-3">
+              {/* Phone: country code prefix + number */}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={contact.countryCode}
+                  onChange={(e) => setContact({ ...contact, countryCode: e.target.value })}
+                  className={`${inputClass} w-20 shrink-0 text-center`}
+                  aria-label="Country code"
+                />
                 <input
                   type="tel"
                   value={contact.phone}
                   onChange={(e) => setContact({ ...contact, phone: e.target.value })}
-                  placeholder="WhatsApp phone"
-                  className={inputClass}
-                />
-                <input
-                  type="email"
-                  value={contact.email}
-                  onChange={(e) => setContact({ ...contact, email: e.target.value })}
-                  placeholder="Email (optional)"
+                  placeholder="Phone number"
                   className={inputClass}
                 />
               </div>
+              <input
+                type="email"
+                value={contact.email}
+                onChange={(e) => setContact({ ...contact, email: e.target.value })}
+                placeholder="Email — required to send consent &amp; privacy policy"
+                className={inputClass}
+              />
             </div>
           </div>
 
