@@ -359,15 +359,30 @@ def get_event_detail(center_id: UUID, event_id: UUID, db: Session = Depends(get_
 @router.post(
     "/{center_id}/{event_id}/approve",
     response_model=ActionResponse,
-    dependencies=[Depends(require_role("staff"))],
 )
 def approve_event_endpoint(
     center_id: UUID,
     event_id: UUID,
     background_tasks: BackgroundTasks,
+    payload: TokenPayload = Depends(require_role("staff")),
     db: Session = Depends(get_db),
 ):
-    """Approve a pending event."""
+    """Approve a pending event.
+
+    Tier guard: a teacher may not approve a director-tier event (incidents,
+    medication, low-confidence flags). The teacher queue UI already hides
+    these, but the endpoint enforces the same rule so a hand-crafted request
+    can't bypass it.
+    """
+    existing = get_event(db, event_id, center_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Event not found")
+    if payload.role == "teacher" and existing.review_tier == "director":
+        raise HTTPException(
+            status_code=403,
+            detail="Director review required for this event",
+        )
+
     event = approve_event(db, event_id, center_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
