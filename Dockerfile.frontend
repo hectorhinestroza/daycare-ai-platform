@@ -10,6 +10,12 @@ COPY frontend/console/ .
 ARG VITE_API_URL
 ENV VITE_API_URL=${VITE_API_URL}
 
+# Sentry DSN — read at build time by Vite and inlined into the bundle.
+# Without this ARG, Railway's build-arg forwarding has nowhere to land,
+# and Vite's import.meta.env.VITE_SENTRY_DSN evaluates to undefined.
+ARG VITE_SENTRY_DSN
+ENV VITE_SENTRY_DSN=${VITE_SENTRY_DSN}
+
 RUN npm run build
 
 # Serve with lightweight static server
