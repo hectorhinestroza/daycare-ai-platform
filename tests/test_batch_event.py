@@ -201,3 +201,62 @@ def test_batch_approve_by_child_name_unchanged(db: Session, center_id, teacher, 
 
     count = batch_approve_events(db, center_id, child_name="Carlos")
     assert count == 1  # Only Carlos's event approved
+
+
+def test_batch_approve_by_child_name_skips_director_tier(
+    db: Session, center_id, teacher, active_children
+):
+    """child_name batch approve must NOT sweep up director-tier events.
+
+    Regression guard: teacher hits 'approve all for Carlos' from the teacher
+    portal. Carlos has one teacher-tier food event AND one director-tier
+    incident pending. The incident must stay PENDING so the director still
+    reviews it.
+    """
+    carlos = next(c for c in active_children if c.name == "Carlos")
+
+    # Teacher-tier food event for Carlos
+    db.add(
+        Event(
+            id=uuid.uuid4(),
+            center_id=center_id,
+            teacher_id=teacher.id,
+            child_id=carlos.id,
+            child_name="Carlos",
+            event_type="food",
+            details="Ate lunch",
+            raw_transcript="Carlos ate lunch",
+            review_tier="teacher",
+            confidence_score=0.9,
+            needs_director_review=False,
+            needs_review=False,
+            status="PENDING",
+        )
+    )
+    # Director-tier incident event for Carlos
+    incident_id = uuid.uuid4()
+    db.add(
+        Event(
+            id=incident_id,
+            center_id=center_id,
+            teacher_id=teacher.id,
+            child_id=carlos.id,
+            child_name="Carlos",
+            event_type="incident",
+            details="Scraped knee on playground",
+            raw_transcript="Carlos scraped his knee",
+            review_tier="director",
+            confidence_score=0.95,
+            needs_director_review=True,
+            needs_review=True,
+            status="PENDING",
+        )
+    )
+    db.commit()
+
+    count = batch_approve_events(db, center_id, child_name="Carlos")
+
+    assert count == 1, "Only the teacher-tier event should be approved"
+
+    incident = db.query(Event).filter(Event.id == incident_id).one()
+    assert incident.status == "PENDING", "Director-tier incident must stay pending"

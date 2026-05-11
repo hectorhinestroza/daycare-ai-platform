@@ -359,9 +359,13 @@ def batch_approve_events(
 ) -> int:
     """Approve all pending events for a child OR a batch group.
 
-    Pass child_name to approve all pending events for that child (original behavior).
+    Pass child_name to approve all pending events for that child (teacher UI).
     Pass batch_id to approve all events in a fan-out batch group (director use case for
     incidents/medication that were not auto-fanned-out but are reviewed together).
+
+    Tier safety: the child_name path approves teacher-tier events only. Incidents
+    and medication (review_tier="director") are reserved for the director queue
+    and must not be swept up by a teacher's "approve all for child" action.
     """
     now = datetime.now(UTC)
     q = db.query(Event).filter(Event.center_id == center_id, Event.status == "PENDING")
@@ -369,7 +373,7 @@ def batch_approve_events(
     if batch_id:
         q = q.filter(Event.batch_id == batch_id)
     elif child_name:
-        q = q.filter(Event.child_name == child_name)
+        q = q.filter(Event.child_name == child_name, Event.review_tier == "teacher")
     else:
         raise ValueError("batch_approve_events requires either child_name or batch_id")
 
