@@ -52,6 +52,22 @@ export default function ChildCard({ child, rooms, expanded, onToggle, centerId, 
       {/* Expanded detail */}
       {expanded && (
         <div className="expand-appear border-t border-outline-variant/10">
+          {/* Director preview — opens what the parent would see in a new tab.
+              sessionStorage is inherited via target=_blank (we deliberately
+              omit rel=noopener for same-origin link). Director's bearer
+              token transfers and the parent feed endpoints accept "any"
+              role with no ownership check for non-parent tokens. */}
+          <div className="px-6 pt-4 -mb-2 flex justify-end">
+            <a
+              href={`/parent/${centerId}/${child.id}`}
+              target="_blank"
+              className="inline-flex items-center gap-1.5 text-xs text-on-surface-variant hover:text-primary underline-offset-4 hover:underline transition-colors"
+              title="Open the parent's view of this child in a new tab"
+            >
+              <span className="material-symbols-outlined text-base">visibility</span>
+              Preview parent view
+            </a>
+          </div>
           <ChildProfile
             child={child}
             rooms={rooms}

@@ -160,6 +160,34 @@ python scripts/mint_first_director_token.py \
 Hand the URL to the director. From then on, the director uses
 `/api/admin/tokens/issue` for every other user.
 
+### Issuing teacher tokens (director console UI)
+
+Teacher bootstrap URLs are generated automatically in the director console.
+No curl required for the common case:
+
+1. Open the director console → **Manage → Teachers** tab
+2. Each teacher row shows a "Teacher app link" panel with the URL already generated
+3. Click **Copy** and send the URL to the teacher (WhatsApp, SMS, etc.)
+4. Click **Refresh** (↺) to rotate the URL if a device is lost or the teacher changes phones
+
+The URL is good for 365 days. After it expires (or after a revoke), regenerate
+from the same panel.
+
+### Enrolling a child with a parent contact (director console UI)
+
+The **Enroll Child** modal now captures the primary parent in one step:
+
+1. Open **Manage → Children** → **Enroll Child**
+2. Fill in the child's details (name, DOB, classroom, allergies)
+3. In the **Primary Contact** section enter the parent's name, phone
+   (country code defaults to `+1`), and **email** (required — used to
+   send the consent magic-link and privacy policy)
+4. Submit — the child is created and the parent contact is attached in a
+   single request
+
+If you skip the contact section, the child is enrolled without a parent
+link. You can add the contact later from the child's profile page.
+
 ### Revoking a token
 
 When a teacher leaves, a parent loses their phone, etc.:
@@ -192,6 +220,63 @@ ritual matters:
    via `POST /api/admin/tokens/issue`
 
 ## Kill Switches
+
+### `CONSENT_GATE_DISABLED` — Phase 1 (teachers-only) override
+
+For the 2-day teacher-only pilot phase BEFORE parents are onboarded with
+paper consent, set on the backend Railway service:
+
+```
+CONSENT_GATE_DISABLED=true
+```
+
+Effect:
+- Voice memos for kids without recorded consent flow normally into the
+  events table (instead of going to `pending_consent_queue`)
+- Director can monitor activity through their console and the
+  "Preview parent view" button on each child
+- Every bypass logs `CONSENT_GATE_DISABLED is set — bypassing consent…`
+  at WARNING level for compliance grep
+
+**Flip back to `false` before any parent receives a bootstrap URL.**
+By the time you onboard parents in Phase 2, the daycare director should
+have collected paper consent forms and either inserted them into
+`parental_consent` rows manually OR sent the parent through the
+`/consent/<token>` magic-link flow.
+
+### Phase 1 → Phase 2 data wipe
+
+After the 2-day pilot, run this against the Railway Postgres to start
+clean before parents arrive (preserves the structural records — center,
+rooms, teachers, admins — and only wipes the pilot's event/photo/log data):
+
+```sql
+BEGIN;
+
+-- Children stay (need their UUIDs for re-enrollment), but if you want a
+-- clean slate including children:
+--   DELETE FROM parental_consent;
+--   DELETE FROM parent_contacts;
+--   DELETE FROM children;
+
+-- Pilot-generated activity
+DELETE FROM activity_logs;
+DELETE FROM daily_narratives;
+DELETE FROM photos;
+DELETE FROM pending_photos;
+DELETE FROM events;
+DELETE FROM pending_events;
+DELETE FROM processed_messages;
+DELETE FROM pending_consent_queue;
+DELETE FROM consent_gate_audit;
+DELETE FROM ai_api_logs;
+
+COMMIT;
+```
+
+Run from the Railway Postgres Query tab, or via `psql "$RAILWAY_DB"`.
+Then set `CONSENT_GATE_DISABLED=false`, restart the backend, and onboard
+parents per the standard Phase 2 procedure.
 
 ### `EXTRACTION_DISABLED` — pause the AI pipeline
 
@@ -231,6 +316,18 @@ Section 11 item 13` (pre-launch checklist).
 ## Acceptance Test Runbook
 
 _Filled in by Phase 5. Placeholder._
+
+## TODO
+
+- [ ] **Sentry** — DSNs are wired up and PII scrubbing is in place, but we haven't
+  validated that errors actually reach the Sentry dashboard end-to-end. Before pilot day:
+  1. Trigger a test error on the backend (raise an exception in a route, hit it with curl)
+  2. Confirm the event appears in the Sentry project (not filtered by `before_send`)
+  3. Set up an alert rule: "new issue → email / Slack within 1 min"
+  4. Repeat the smoke test on the frontend (throw in a React component, confirm it lands)
+  5. Review the scrubber allowlist in `backend/utils/safe_logging.py::pii_scrubber`
+     and `frontend/console/src/sentry.js::piiScrubber` — add any new fields that
+     contain child or parent data
 
 ## Known Limitations
 
