@@ -67,23 +67,44 @@ function piiScrubber(event) {
 export function initSentry() {
   const dsn = import.meta.env.VITE_SENTRY_DSN;
 
+  // Diagnostics: ALWAYS log init status so we can verify in production
+  // whether the SDK loaded, without depending on internal SDK globals
+  // like __SENTRY__ that may change between SDK versions. The DSN value
+  // itself is never logged — only its length, so the user can confirm
+  // the env var made it through the build.
+  // eslint-disable-next-line no-console
+  console.info(
+    '[sentry] init called, dsn length=',
+    (dsn || '').length,
+    'mode=',
+    import.meta.env.MODE,
+  );
+
   if (!dsn) {
-    // Empty DSN → SDK init becomes a no-op. We log once so it's obvious in dev.
-    if (import.meta.env.DEV) {
-      // eslint-disable-next-line no-console
-      console.info('[sentry] VITE_SENTRY_DSN not set — Sentry disabled');
-    }
+    // eslint-disable-next-line no-console
+    console.warn('[sentry] VITE_SENTRY_DSN not set — Sentry disabled');
     return;
   }
 
-  Sentry.init({
-    dsn,
-    environment: import.meta.env.MODE,
-    sendDefaultPii: false,
-    beforeSend: piiScrubber,
-    // Tracing disabled until we have a need; tune this when activating perf data.
-    tracesSampleRate: 0,
-  });
+  try {
+    Sentry.init({
+      dsn,
+      environment: import.meta.env.MODE,
+      sendDefaultPii: false,
+      beforeSend: piiScrubber,
+      // Tracing disabled until we have a need; tune this when activating perf data.
+      tracesSampleRate: 0,
+    });
+    // Expose for ad-hoc testing from the browser console. Removed in v2.
+    if (typeof window !== 'undefined') {
+      window.Sentry = Sentry;
+    }
+    // eslint-disable-next-line no-console
+    console.info('[sentry] initialized — window.Sentry available for tests');
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[sentry] init threw — continuing without Sentry:', err);
+  }
 }
 
 // Exported for unit tests
