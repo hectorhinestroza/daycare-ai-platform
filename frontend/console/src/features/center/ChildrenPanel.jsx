@@ -32,6 +32,15 @@ export default function ChildrenPanel({ centerId, rooms, addToast }) {
 
   useEffect(() => { loadChildren(); }, [loadChildren]);
 
+  // Stable callbacks for the add-child modal. Without these, every parent
+  // re-render creates fresh function refs, which doesn't unmount the modal
+  // but does churn its prop diff on every keystroke inside the modal.
+  const closeAddModal = useCallback(() => setShowAddModal(false), []);
+  const handleChildCreated = useCallback(() => {
+    setShowAddModal(false);
+    loadChildren();
+  }, [loadChildren]);
+
   const filtered = searchTerm
     ? children.filter((c) => c.name.toLowerCase().includes(searchTerm.toLowerCase()))
     : children;
@@ -130,8 +139,8 @@ export default function ChildrenPanel({ centerId, rooms, addToast }) {
           centerId={centerId}
           rooms={rooms}
           addToast={addToast}
-          onClose={() => setShowAddModal(false)}
-          onCreated={() => { setShowAddModal(false); loadChildren(); }}
+          onClose={closeAddModal}
+          onCreated={handleChildCreated}
         />
       )}
     </div>
