@@ -160,6 +160,34 @@ python scripts/mint_first_director_token.py \
 Hand the URL to the director. From then on, the director uses
 `/api/admin/tokens/issue` for every other user.
 
+### Issuing teacher tokens (director console UI)
+
+Teacher bootstrap URLs are generated automatically in the director console.
+No curl required for the common case:
+
+1. Open the director console → **Manage → Teachers** tab
+2. Each teacher row shows a "Teacher app link" panel with the URL already generated
+3. Click **Copy** and send the URL to the teacher (WhatsApp, SMS, etc.)
+4. Click **Refresh** (↺) to rotate the URL if a device is lost or the teacher changes phones
+
+The URL is good for 365 days. After it expires (or after a revoke), regenerate
+from the same panel.
+
+### Enrolling a child with a parent contact (director console UI)
+
+The **Enroll Child** modal now captures the primary parent in one step:
+
+1. Open **Manage → Children** → **Enroll Child**
+2. Fill in the child's details (name, DOB, classroom, allergies)
+3. In the **Primary Contact** section enter the parent's name, phone
+   (country code defaults to `+1`), and **email** (required — used to
+   send the consent magic-link and privacy policy)
+4. Submit — the child is created and the parent contact is attached in a
+   single request
+
+If you skip the contact section, the child is enrolled without a parent
+link. You can add the contact later from the child's profile page.
+
 ### Revoking a token
 
 When a teacher leaves, a parent loses their phone, etc.:
@@ -288,6 +316,18 @@ Section 11 item 13` (pre-launch checklist).
 ## Acceptance Test Runbook
 
 _Filled in by Phase 5. Placeholder._
+
+## TODO
+
+- [ ] **Sentry** — DSNs are wired up and PII scrubbing is in place, but we haven't
+  validated that errors actually reach the Sentry dashboard end-to-end. Before pilot day:
+  1. Trigger a test error on the backend (raise an exception in a route, hit it with curl)
+  2. Confirm the event appears in the Sentry project (not filtered by `before_send`)
+  3. Set up an alert rule: "new issue → email / Slack within 1 min"
+  4. Repeat the smoke test on the frontend (throw in a React component, confirm it lands)
+  5. Review the scrubber allowlist in `backend/utils/safe_logging.py::pii_scrubber`
+     and `frontend/console/src/sentry.js::piiScrubber` — add any new fields that
+     contain child or parent data
 
 ## Known Limitations
 
