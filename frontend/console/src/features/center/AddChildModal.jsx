@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { createChild } from '../../api';
+import { addContact, createChild } from '../../api';
 
 export default function AddChildModal({ centerId, rooms, addToast, onClose, onCreated }) {
   const [fields, setFields] = useState({
@@ -9,6 +9,7 @@ export default function AddChildModal({ centerId, rooms, addToast, onClose, onCr
     allergies: '',
     medical_notes: '',
   });
+  const [contact, setContact] = useState({ name: '', phone: '', email: '' });
   const [saving, setSaving] = useState(false);
 
   async function handleSubmit(e) {
@@ -22,7 +23,20 @@ export default function AddChildModal({ centerId, rooms, addToast, onClose, onCr
       if (fields.allergies.trim()) data.allergies = fields.allergies.trim();
       if (fields.medical_notes.trim()) data.medical_notes = fields.medical_notes.trim();
 
-      await createChild(centerId, data);
+      const child = await createChild(centerId, data);
+
+      if (contact.name.trim()) {
+        const contactData = {
+          name: contact.name.trim(),
+          relationship_type: 'parent',
+          is_primary: true,
+          can_pickup: true,
+        };
+        if (contact.phone.trim()) contactData.phone = contact.phone.trim();
+        if (contact.email.trim()) contactData.email = contact.email.trim();
+        await addContact(centerId, child.id, contactData);
+      }
+
       addToast(`${data.name} enrolled`);
       onCreated();
     } catch (err) {
@@ -32,7 +46,11 @@ export default function AddChildModal({ centerId, rooms, addToast, onClose, onCr
     }
   }
 
-  const inputClass = 'w-full bg-surface-container-highest rounded px-4 py-3 text-on-surface placeholder:text-outline outline-none focus:bg-surface-container-lowest border border-transparent focus:border-outline-variant/20 transition-colors';
+  // text-base (16px) is required on iOS — anything smaller triggers Safari's
+  // auto-zoom on focus, which the user perceives as the page jumping or
+  // "refreshing" mid-typing. Tailwind's default body is 16px but being
+  // explicit here is defensive.
+  const inputClass = 'w-full bg-surface-container-highest rounded px-4 py-3 text-base text-on-surface placeholder:text-outline outline-none focus:bg-surface-container-lowest border border-transparent focus:border-outline-variant/20 transition-colors';
 
   return (
     <div className="fixed inset-0 bg-on-surface/30 backdrop-blur-sm z-[60] flex items-end sm:items-center justify-center" onClick={onClose}>
@@ -54,7 +72,7 @@ export default function AddChildModal({ centerId, rooms, addToast, onClose, onCr
               onChange={(e) => setFields({ ...fields, name: e.target.value })}
               placeholder="Full name"
               className={inputClass}
-              autoFocus
+              autoComplete="off"
               required
             />
           </div>
@@ -102,6 +120,38 @@ export default function AddChildModal({ centerId, rooms, addToast, onClose, onCr
               placeholder="Any medical conditions or notes"
               className={`${inputClass} resize-none`}
             />
+          </div>
+
+          {/* Primary contact — optional, captured upfront to avoid a second step */}
+          <div className="pt-2 border-t border-outline-variant/20">
+            <p className="text-xs font-medium text-on-surface-variant mb-3">
+              Primary Contact <span className="font-normal text-outline">(optional — add now or later)</span>
+            </p>
+            <div className="space-y-3">
+              <input
+                type="text"
+                value={contact.name}
+                onChange={(e) => setContact({ ...contact, name: e.target.value })}
+                placeholder="Parent / guardian name"
+                className={inputClass}
+              />
+              <div className="grid grid-cols-2 gap-3">
+                <input
+                  type="tel"
+                  value={contact.phone}
+                  onChange={(e) => setContact({ ...contact, phone: e.target.value })}
+                  placeholder="WhatsApp phone"
+                  className={inputClass}
+                />
+                <input
+                  type="email"
+                  value={contact.email}
+                  onChange={(e) => setContact({ ...contact, email: e.target.value })}
+                  placeholder="Email (optional)"
+                  className={inputClass}
+                />
+              </div>
+            </div>
           </div>
 
           <div className="flex gap-3 justify-end pt-2">
