@@ -18,9 +18,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
 from backend.services.narrative import generate_narrative
 from backend.storage.database import get_db
-from backend.storage.models import Child
+from backend.storage.models import Center, Child
 from backend.utils.auth_tokens import TokenPayload
 from backend.utils.pilot_auth import require_parent_owns_child, require_role
 from backend.storage.narrative_handlers import (
@@ -32,6 +34,21 @@ from backend.storage.narrative_handlers import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/narratives", tags=["narratives"])
+
+
+def _today_for_center(db: Session, center_id: UUID) -> date_type:
+    """Today's date in the center's local timezone.
+
+    Using UTC today on a center in America/New_York means anything clicked
+    after 8pm ET lands on tomorrow's date, and the narrative date filter
+    (which respects center TZ) then finds zero events.
+    """
+    center = db.query(Center).filter(Center.id == center_id).first()
+    tz_str = (center.timezone if center else None) or "America/New_York"
+    try:
+        return datetime.now(ZoneInfo(tz_str)).date()
+    except (ZoneInfoNotFoundError, Exception):
+        return datetime.now(timezone.utc).date()
 
 
 # ─── Response Schema ──────────────────────────────────────────
@@ -113,7 +130,7 @@ def get_narrative_for_date(
 async def generate_narrative_endpoint(
     center_id: UUID,
     child_id: UUID,
-    target_date: Optional[date_type] = Query(default=None, description="Date to generate for (defaults to today UTC)"),
+    target_date: Optional[date_type] = Query(default=None, description="Date to generate for (defaults to today in the center's local timezone)"),
     db: Session = Depends(get_db),
 ):
     """Generate (or regenerate) an EOD narrative for a child on a given date.
@@ -121,7 +138,7 @@ async def generate_narrative_endpoint(
     Idempotent: regenerating overwrites the existing narrative unless admin_override=True.
     """
     if target_date is None:
-        target_date = datetime.now(timezone.utc).date()
+        target_date = _today_for_center(db, center_id)
 
     try:
         result = await generate_narrative(db, center_id, child_id, target_date)
@@ -150,7 +167,7 @@ async def generate_narrative_endpoint(
 )
 async def generate_all_narratives(
     center_id: UUID,
-    target_date: Optional[date_type] = Query(default=None, description="Date to generate for (defaults to today UTC)"),
+    target_date: Optional[date_type] = Query(default=None, description="Date to generate for (defaults to today in the center's local timezone)"),
     force: bool = Query(default=False, description="Regenerate even if a narrative already exists for this date"),
     db: Session = Depends(get_db),
 ):
@@ -160,7 +177,7 @@ async def generate_all_narratives(
     Pass force=true to regenerate everyone (e.g. to pick up late-day events).
     """
     if target_date is None:
-        target_date = datetime.now(timezone.utc).date()
+        target_date = _today_for_center(db, center_id)
 
     children = (
         db.query(Child)
