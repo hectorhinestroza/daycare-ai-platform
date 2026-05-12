@@ -387,7 +387,6 @@ def batch_approve_events(
     )
     db.commit()
     if count > 0:
-        label = f"batch_id={batch_id}" if batch_id else child_name
         child = None
         if child_name:
             child = get_child_by_name(db, center_id, child_name)
@@ -397,7 +396,15 @@ def batch_approve_events(
             "BATCH_APPROVE",
             child_id=child.id if child else None,
             actor_id=reviewed_by,
-            details={"label": label, "count": count},
+            # Match the single-event APPROVE shape so the activity log UI can
+            # read details.child_name uniformly. For batch_id (director's
+            # fan-out approval) there is no single child, so use a label
+            # the UI can render gracefully.
+            details={
+                "child_name": child_name if child_name else "the batch",
+                "count": count,
+                "batch_id": str(batch_id) if batch_id else None,
+            },
         )
     return count
 

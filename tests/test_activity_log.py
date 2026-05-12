@@ -140,6 +140,10 @@ def test_batch_approve_creates_log(db_session):
     assert any(log["action"] == "BATCH_APPROVE" for log in logs)
     batch_log = next(log for log in logs if log["action"] == "BATCH_APPROVE")
     assert batch_log["details"]["count"] == 2
+    # Regression guard: the activity log UI reads details.child_name to render
+    # "Batch approved N events for {child_name}". Missing it surfaces as
+    # "an unknown child" in the director dashboard.
+    assert batch_log["details"]["child_name"] == "Jason"
 
 
 def test_batch_approve_log_resolves_teacher_name(db_session):
