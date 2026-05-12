@@ -1,6 +1,6 @@
 {
-  "name": "Daycare Portal",
-  "short_name": "Daycare",
+  "name": "Raina",
+  "short_name": "Raina",
   "description": "Real-time updates from your daycare",
   "start_url": "/app?source=pwa",
   "scope": "/",
