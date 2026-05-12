@@ -18,7 +18,31 @@
 // (F5) within the same tab. Closing the tab clears it — to come back,
 // the user re-opens their bootstrap URL.
 
-export const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// API_BASE resolution:
+//   - VITE_API_URL set:    use it (the prod path).
+//   - dev (vite serve):    fall back to http://localhost:8000 for local backend.
+//   - prod with no var:    fall back to same-origin ('') so requests are
+//                          relative and stay on HTTPS. They will 404 because
+//                          the frontend origin has no backend mounted, but
+//                          that's better than the http://localhost:8000
+//                          fallback which triggered a mixed-content warning
+//                          baked into every prod bundle whenever the env
+//                          var was missing or misspelled at build time.
+// A console.error is also logged in prod so the misconfiguration is loud.
+export const API_BASE = (() => {
+  const fromEnv = import.meta.env.VITE_API_URL;
+  if (fromEnv) return fromEnv;
+  if (import.meta.env.PROD) {
+    // Loud, but non-fatal — surfacing in DevTools beats silent regression.
+    console.error(
+      'VITE_API_URL is not set in this build. ' +
+      'API requests will go to same-origin and fail. ' +
+      'Set VITE_API_URL on the frontend service and rebuild.'
+    );
+    return '';
+  }
+  return 'http://localhost:8000';
+})();
 
 const TOKEN_KEY = 'dc_token';
 const ROLE_KEY = 'dc_role';
