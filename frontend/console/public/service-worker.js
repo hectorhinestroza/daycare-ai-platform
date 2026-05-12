@@ -23,8 +23,8 @@ let cachedToken = null;
 const STATIC_FALLBACK_START_URL = '/app?source=pwa';
 
 const BASE_MANIFEST = {
-  name: 'Daycare Portal',
-  short_name: 'Daycare',
+  name: 'Raina',
+  short_name: 'Raina',
   description: 'Real-time updates from your daycare',
   scope: '/',
   display: 'standalone',
