@@ -11,6 +11,7 @@ from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
+from backend.config import get_settings
 from backend.services.email import send_consent_email
 from backend.storage.models import (
     Center,
@@ -125,7 +126,22 @@ def create_child(
     medical_notes: Optional[str] = None,
     status: str = "PENDING_CONSENT",
 ) -> Child:
-    """Enroll a new child."""
+    """Enroll a new child.
+
+    Phase 1 override: when CONSENT_GATE_DISABLED is set, a new child is
+    enrolled as ACTIVE instead of PENDING_CONSENT so the parent portal
+    skips the "Setup Required" screen and the director can preview the
+    feed directly. Flip the flag off before Phase 2 (parent onboarding).
+    """
+    settings = get_settings()
+    if settings.consent_gate_disabled and status == "PENDING_CONSENT":
+        logger.warning(
+            "CONSENT_GATE_DISABLED is set — enrolling %s as ACTIVE instead of "
+            "PENDING_CONSENT. Must be unset before parents are onboarded.",
+            name,
+        )
+        status = "ACTIVE"
+
     child = Child(
         id=uuid.uuid4(),
         center_id=center_id,
@@ -232,8 +248,16 @@ def add_parent_contact(
     db.commit()
     db.refresh(contact)
 
-    # Auto-trigger magic link when primary email is added to a PENDING_CONSENT child
-    if child.status == "PENDING_CONSENT" and is_primary and email:
+    # Auto-trigger magic link when primary email is added to a PENDING_CONSENT child.
+    # Phase 1 override: when CONSENT_GATE_DISABLED is set, suppress the email/token
+    # entirely. The kid is ACTIVE anyway and no parent receives anything.
+    settings = get_settings()
+    if (
+        child.status == "PENDING_CONSENT"
+        and is_primary
+        and email
+        and not settings.consent_gate_disabled
+    ):
 
         token_record = ConsentToken(
             id=uuid.uuid4(),
