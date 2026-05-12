@@ -159,6 +159,44 @@ Photos get the date stripped from metadata (privacy), saved to secure storage, a
 
 ---
 
+## Event types the AI recognizes
+
+Teachers never type a category — they just speak naturally and the AI picks the right label from what was said. You'll see these labels in the Today's Queue, History, and parent feed. Here's what each one means and the kind of phrasing that triggers it.
+
+### Teacher-approved events (low-stakes)
+
+These appear in the teacher's queue. A teacher (or you) can approve them with one tap.
+
+| Type | Captures | Example voice notes |
+|---|---|---|
+| **food** | Meals, snacks, drinks | *"Carlos ate all his rice and beans"* · *"Sofia had a snack at 10"* |
+| **nap** | Naps, rest times | *"Annie napped from 1 to 2:30"* · *"Miguel didn't sleep at nap"* |
+| **potty** | Diaper changes, potty trips | *"Carlos went potty after lunch"* · *"Changed Sofia's diaper at 11"* |
+| **kudos** | Positive moments, wins, milestones | *"Sofia shared her crayons today"* · *"Miguel said his first full sentence"* |
+| **activity** | Play, art, music, outdoor time | *"Carlos played basketball outside"* · *"All the kids did finger painting"* |
+| **absence** | Child not present | *"Annie is out sick today"* |
+| **note** | General messages for parents | *"Tell mom Sofia's water bottle is leaking"* |
+| **observation** | Behavioral or developmental notes | *"Miguel was clingy this morning"* · *"Carlos asked for a hug twice today"* |
+| **health_check** | Routine wellness, temperatures | *"Took everyone's temperature, all under 99"* |
+
+### Director-only events (high-stakes)
+
+These always route to **your** director queue, never the teacher's. You're the only one who can approve them. Designed this way because they need a second pair of eyes before going to parents.
+
+| Type | Captures | Example voice notes |
+|---|---|---|
+| **incident** | Injuries, falls, bumps, scrapes, behavioral incidents (bites, hits, etc.) | *"Carlos scraped his knee on the playground"* · *"Sofia bit Miguel during snack time"* |
+| **medication** | Any medication administered | *"Gave Annie her allergy medicine at 11"* |
+
+### Two helpful quirks
+
+- **Group events**: when a teacher says *"all the kids had rice and beans"*, the AI recognizes it applies to everyone in that teacher's classroom and creates one event per child — no need to repeat names. (Doesn't apply to **incident** or **medication** — those are always per-child for safety.)
+- **Low-confidence fallback**: if the AI is unsure what was said (garbled audio, ambiguous name, etc.), the event goes to your director queue regardless of type — so you can catch it before it reaches parents.
+
+> 📸 *[Screenshot: example of an event card in the queue showing the type label]*
+
+---
+
 ## The Director Console — your view
 
 You'll add the director app to your home screen on Day 0. Once that's done, tap the icon any time to open it.
