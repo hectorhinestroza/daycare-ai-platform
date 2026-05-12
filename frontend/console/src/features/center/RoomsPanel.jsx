@@ -56,6 +56,23 @@ export default function RoomsPanel({ centerId, rooms, teachers, addToast, onRoom
 
   return (
     <div className="space-y-4">
+      {/* Add room form — placed above the list so the director sees a clear
+          entry point on first load and doesn't have to scroll past every
+          existing room to add a new one. */}
+      <form onSubmit={handleCreate} className="flex items-center gap-3">
+        <input
+          type="text"
+          value={newRoomName}
+          onChange={(e) => setNewRoomName(e.target.value)}
+          placeholder="New room name…"
+          className="flex-1 bg-surface-container-highest rounded-full px-5 py-3 text-on-surface placeholder:text-outline outline-none focus:bg-surface-container-lowest border border-transparent focus:border-outline-variant/20 transition-colors"
+        />
+        <button type="submit" disabled={saving || !newRoomName.trim()} className="btn-primary !py-3 disabled:opacity-40">
+          <span className="material-symbols-outlined text-base mr-1">add</span>
+          Add Room
+        </button>
+      </form>
+
       {rooms.map((room) => {
         const roomTeachers = teachers.filter((t) => t.room_id === room.id);
         const isEditing = editingId === room.id;
@@ -131,21 +148,6 @@ export default function RoomsPanel({ centerId, rooms, teachers, addToast, onRoom
           </div>
         );
       })}
-
-      {/* Add room form */}
-      <form onSubmit={handleCreate} className="flex items-center gap-3 mt-6">
-        <input
-          type="text"
-          value={newRoomName}
-          onChange={(e) => setNewRoomName(e.target.value)}
-          placeholder="New room name…"
-          className="flex-1 bg-surface-container-highest rounded-full px-5 py-3 text-on-surface placeholder:text-outline outline-none focus:bg-surface-container-lowest border border-transparent focus:border-outline-variant/20 transition-colors"
-        />
-        <button type="submit" disabled={saving || !newRoomName.trim()} className="btn-primary !py-3 disabled:opacity-40">
-          <span className="material-symbols-outlined text-base mr-1">add</span>
-          Add Room
-        </button>
-      </form>
 
       {rooms.length === 0 && (
         <div className="text-center py-12 text-on-surface-variant">

@@ -135,21 +135,23 @@ export default function AddChildModal({ centerId, rooms, addToast, onClose, onCr
                 placeholder="Parent / guardian name"
                 className={inputClass}
               />
-              {/* Phone: country code prefix + number */}
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={contact.countryCode}
-                  onChange={(e) => setContact({ ...contact, countryCode: e.target.value })}
-                  className={`${inputClass} w-20 shrink-0 text-center`}
-                  aria-label="Country code"
-                />
+              {/* Phone: +1 prefix is shown visually inside the same field so it
+                  looks like a single input, not two boxes. Country code stays
+                  hardcoded to +1 for the pilot. */}
+              <div className="flex items-center w-full bg-surface-container-highest rounded border border-transparent focus-within:bg-surface-container-lowest focus-within:border-outline-variant/20 transition-colors">
+                <span
+                  className="pl-4 pr-2 text-base text-on-surface-variant select-none"
+                  aria-hidden="true"
+                >
+                  +1
+                </span>
                 <input
                   type="tel"
                   value={contact.phone}
                   onChange={(e) => setContact({ ...contact, phone: e.target.value })}
                   placeholder="Phone number"
-                  className={inputClass}
+                  className="flex-1 bg-transparent border-0 outline-none py-3 pr-4 text-base text-on-surface placeholder:text-outline"
+                  aria-label="Phone number"
                 />
               </div>
               <input
