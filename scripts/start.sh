@@ -13,6 +13,11 @@ echo "=== Daycare AI Platform — Starting ==="
 #     migrations or no-ops.
 python - <<'EOF'
 from backend.storage.database import Base, engine
+# Importing models registers every ORM class onto Base.metadata. Without
+# this side-effect import, create_all() sees an empty metadata and creates
+# nothing — which is how a prior boot crashed on "relation 'children'
+# does not exist" when creating the consent view.
+import backend.storage.models  # noqa: F401
 from sqlalchemy import inspect, text
 
 from alembic import command
