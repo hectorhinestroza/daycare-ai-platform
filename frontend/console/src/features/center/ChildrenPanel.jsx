@@ -3,7 +3,15 @@ import { fetchChildren } from '../../api';
 import ChildCard from './ChildCard';
 import AddChildModal from './AddChildModal';
 
-const STATUS_OPTIONS = ['ACTIVE', 'ENROLLED', 'WAITLIST'];
+// Pilot UX decision: ACTIVE and ENROLLED mean roughly the same thing to a
+// director, and WAITLIST isn't used. Show two pills, and have ENROLLED match
+// both ACTIVE and ENROLLED kids so the director doesn't have to toggle.
+const STATUS_OPTIONS = ['ACTIVE', 'ENROLLED'];
+
+const STATUS_FILTER_MATCH = {
+  ACTIVE: (status) => status === 'ACTIVE',
+  ENROLLED: (status) => status === 'ACTIVE' || status === 'ENROLLED',
+};
 
 export default function ChildrenPanel({ centerId, rooms, addToast }) {
   const [children, setChildren] = useState([]);
@@ -20,7 +28,8 @@ export default function ChildrenPanel({ centerId, rooms, addToast }) {
     try {
       const filters = {};
       if (filterRoom) filters.room_id = filterRoom;
-      if (filterStatus) filters.status = filterStatus;
+      // Status filter applied client-side because ENROLLED is now a synonym
+      // for "ACTIVE or ENROLLED" — backend would need OR semantics.
       const data = await fetchChildren(centerId, filters);
       setChildren(data);
     } catch (err) {
@@ -28,7 +37,7 @@ export default function ChildrenPanel({ centerId, rooms, addToast }) {
     } finally {
       setLoading(false);
     }
-  }, [centerId, filterRoom, filterStatus, addToast]);
+  }, [centerId, filterRoom, addToast]);
 
   useEffect(() => { loadChildren(); }, [loadChildren]);
 
@@ -41,9 +50,12 @@ export default function ChildrenPanel({ centerId, rooms, addToast }) {
     loadChildren();
   }, [loadChildren]);
 
-  const filtered = searchTerm
-    ? children.filter((c) => c.name.toLowerCase().includes(searchTerm.toLowerCase()))
-    : children;
+  const statusMatcher = filterStatus ? STATUS_FILTER_MATCH[filterStatus] : null;
+  const filtered = children.filter((c) => {
+    if (statusMatcher && !statusMatcher(c.status)) return false;
+    if (searchTerm && !c.name.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+    return true;
+  });
 
   return (
     <div>
