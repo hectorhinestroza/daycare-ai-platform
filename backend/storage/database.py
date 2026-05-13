@@ -20,9 +20,21 @@ settings = get_settings()
 
 engine = create_engine(
     settings.database_url,
-    pool_pre_ping=True,  # verify connections are alive before using
-    pool_size=5,  # max 5 persistent connections
-    max_overflow=10,  # up to 10 overflow connections under load
+    pool_pre_ping=True,    # verify connections are alive before checkout
+    # Pool sized for pilot traffic: 4-5 teachers, ~10 parents polling every 10s,
+    # the director, plus background narrative-refresh tasks that hold a
+    # connection during ~10s GPT-4o calls. The original 5+10=15 exhausted under
+    # real load on day 1 and timed out new requests at 30s. Railway Postgres
+    # defaults to ~100 max_connections so 20+40=60 leaves comfortable headroom.
+    pool_size=20,
+    max_overflow=40,
+    # Force recycle every 30 min so we don't hold onto stale TCP connections
+    # if Railway Postgres or the network drops idle ones server-side.
+    pool_recycle=1800,
+    # Fail fast (10s) instead of stalling 30s waiting on a free connection —
+    # surfaces capacity issues sooner and lets the client retry without a
+    # half-minute hang.
+    pool_timeout=10,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
