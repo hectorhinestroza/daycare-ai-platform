@@ -5,6 +5,48 @@ constraints, rollback procedures, and emergency switches for the deployed
 environment. Keep it short and accurate — anything that drifts from reality
 becomes a hazard.
 
+## Week 1 Status (as of 2026-05-15)
+
+Live pilot site: **Tilly's Tots**, timezone `America/Los_Angeles`.
+Mode: **Phase 1 still active** — `CONSENT_GATE_DISABLED=true`, no parents
+onboarded yet. The 2-day teacher-only window stretched into a longer
+shakedown — flip to Phase 2 only after the open items below are stable.
+
+### Operational changes shipped during the first week
+
+| Issue surfaced | Fix shipped (PR) | What it does |
+|---|---|---|
+| Pool exhaustion mid-day-1 — `QueuePool limit of size 5 overflow 10 reached`, all requests 500ing | **#65** — bumped `pool_size=20`, `max_overflow=40`, added `pool_recycle=1800`, `pool_timeout=10` in `backend/storage/database.py` | 15-connection pool was too small for ~5 teachers + parent portal polling at 10 s. Now sized for 60 concurrent with a 30 min recycle. |
+| Voice transcription got names like **Clara / Loie / Emi** wrong; teachers' own names ended up as kid events | **#66** — Whisper roster prompt + Double-Metaphone fuzzy resolver + teacher-aware extraction prompt | See **Voice Extraction Pipeline** below for the full flow. |
+| Director had to copy-paste teacher portal links to preview | **#66** — `Open` button next to each teacher's bootstrap link in Center > Teachers | Mirrors the parent-portal Open button from earlier. |
+| Several smaller UI bugs (waitlist tab unused, enrolled vs active confusion, rooms add-form at bottom, +1 phone prefix clunky) | **#64** | Console polish before pilot day. |
+| Brand rename "Daycare" → "Raina" in PWA install title and tab title | **#63** | Existing installed PWAs keep old label until re-installed. |
+| Local-dev had no way to bypass auth | **#66** — `scripts/seed_local_dev.py` + relies on existing `pilot_auth.py` dev bypass | Run the seed once, start backend with `ENVIRONMENT=development`, `npm run dev` works cold. |
+
+### Open items the director flagged that are NOT yet shipped
+
+- **Teacher pronunciation recording at enrollment** — proposed by the
+  director as a stronger fallback than Double-Metaphone. Tracked as a
+  TODO in `get_child_by_name` (see Voice Extraction Pipeline §
+  Resolver).
+- **Teacher name on event cards / in narrative** (#1B in the day-1
+  feedback round). Skipped because the new extraction prompt now bakes
+  the teacher into the parent-visible `details` text. Revisit if the
+  next pilot session shows it's still unclear.
+
+### Known prod state at pilot start
+
+- Single Postgres on Railway (volume was wiped 2026-05-11 after table
+  corruption — see "DB recovery" note below); fresh schema bootstrapped
+  by the updated `scripts/start.sh` (auto-detects empty DB, runs
+  `create_all` + view + stamps Alembic at HEAD).
+- One director admin (Hector), no teachers/kids yet at the time of
+  writing — populated via the director console once Tilly's Tots is in
+  the system.
+- `CONSENT_GATE_DISABLED=true` set in Railway env.
+- Twilio WhatsApp Sandbox (72-hour re-join, code documented in the
+  director guide).
+
 ## Hard Constraints
 
 ### Single replica only — DO NOT scale
@@ -296,6 +338,192 @@ Effect:
 
 Flip back to `false` (or remove the var) to resume normal extraction.
 No restart needed beyond Railway's deploy.
+
+## Voice Extraction Pipeline
+
+Updated 2026-05-15 (PR #66). This section is the source of truth for how
+a WhatsApp voice memo becomes one or more DB events. If you're debugging
+"the AI missed the kid's name" or "the AI extracted the wrong event,"
+start here.
+
+### End-to-end flow
+
+```
+WhatsApp voice memo ──► /twilio webhook (whatsapp.py)
+                                 │
+                                 ├─► get_children_by_center (roster fetch)
+                                 │
+                                 ├─► transcribe_audio(audio, prompt=roster_hint)
+                                 │       │
+                                 │       └─► OpenAI Whisper
+                                 │           prompt: "Children at this
+                                 │                    daycare: Clara, Loie,
+                                 │                    Emi, ..."
+                                 │
+                                 ├─► extract_events(transcript,
+                                 │                  known_children=roster,
+                                 │                  teacher_name=teacher.name)
+                                 │       │
+                                 │       └─► GPT-4o (chat completions)
+                                 │           system: extraction rules
+                                 │           user:   teacher context + roster
+                                 │                   + transcript
+                                 │
+                                 ├─► For each extracted event:
+                                 │     get_child_by_name(child_name)
+                                 │       Pass 1: exact case-insensitive
+                                 │       Pass 2: prefix match
+                                 │       Pass 3: contains match
+                                 │       Pass 4: Double-Metaphone phonetic
+                                 │       → child_id (or None if ambiguous)
+                                 │
+                                 ├─► Consent gate (skipped if
+                                 │                CONSENT_GATE_DISABLED)
+                                 │
+                                 └─► create_event_from_base
+                                       teacher_id + child_id + details
+```
+
+### 1. Whisper transcription with roster hint
+
+`backend/services/transcription.py::transcribe_audio` accepts an optional
+`prompt` string and forwards it to OpenAI Whisper. Whisper biases its
+output toward terms in the prompt — passing the kid roster materially
+improves spelling of unusual names.
+
+The prompt is built in `backend/routers/whatsapp.py` right before the
+transcription call:
+
+```python
+center_children = get_children_by_center(db, teacher.center_id)
+known_names = [c.name for c in center_children if c.name]
+whisper_prompt = (
+    f"Children at this daycare: {', '.join(known_names)}."
+    if known_names else None
+)
+```
+
+Limits to know:
+- Whisper accepts up to ~244 tokens in `prompt` (~1000 chars). At pilot
+  scale (one center, max ~30 kids) we're well under that.
+- The roster includes ALL active children in the center, not just the
+  teacher's room. Cross-room mentions ("Carlos was visiting from the
+  older room") need this.
+
+### 2. Extraction with teacher context
+
+`backend/services/extraction.py::extract_events` accepts an optional
+`teacher_name`. When set, the user prompt prepends explicit rules:
+
+- Never extract the teacher's own name as a child event.
+- The teacher's first-person references ("I", "me", "my") resolve to
+  the teacher's name in event `details`.
+- When the teacher appears as actor OR recipient in a child event,
+  attribute them in `details`. Direction is preserved:
+
+| Transcript | Resulting event |
+|---|---|
+| `"Emi helped Joii build a tower"` | `child=Joii, details="Built a tower with help from Emi"` |
+| `"I read a book to Carlos"` | `child=Carlos, details="Read a book with Emi"` |
+| `"Carlos helped me organize the toys"` | `child=Carlos, details="Helped Emi organize the toys"` |
+| `"Joii asked me for a hug"` | `child=Joii, details="Asked Emi for a hug"` |
+
+The system prompt (unchanged from earlier) still enforces:
+- Always extract every event mentioned.
+- Confidence < 0.7 forces director review.
+- Incident / medication events ALWAYS go to director review regardless
+  of confidence.
+- Group phrases ("all kids", "everyone") set `applies_to_all=true`;
+  the WhatsApp router then fans the event out to each ACTIVE child in
+  the teacher's room.
+
+### 3. Name resolution — `get_child_by_name`
+
+Four sequential passes, defined in
+`backend/storage/events_handlers.py::get_child_by_name`. Earlier passes
+short-circuit; later passes only run if no unique earlier match.
+
+| Pass | Strategy | Example |
+|---|---|---|
+| 1 | Exact case-insensitive (`ilike`) | `"Annie Johnson"` → `"Annie Johnson"` |
+| 2 | First-name prefix (`Child.name ILIKE '<input> %'`) — only if uniquely matches | `"Annie"` → `"Annie Johnson"` |
+| 3 | Contains (`Child.name ILIKE '% <input> %'`) — only if uniquely matches | `"Marie"` → `"Sofia Marie Lopez"` |
+| 4 | **Double-Metaphone** phonetic — only if uniquely matches | `"Klara"` → `"Clara"`, `"Emmy"` → `"Emi"` |
+
+Verified empirically against the pilot's tricky names:
+- `Clara` ↔ `Klara`
+- `Emi` ↔ `Emmy`, `Amy`, `Aimee`, `Ammy`
+- `Loie` ↔ `Lowee`, `Lowey`
+- `Joii` ↔ `Joey`
+
+Returns `None` on ambiguity (two kids share the same phonetic code).
+The caller treats `None` as "send to director review" rather than
+silently mis-attributing.
+
+The `metaphone` PyPI package is the only new runtime dep. Import is
+wrapped in a `try/except ImportError` so the resolver falls back to the
+first 3 passes if the package isn't installed (e.g. in a stripped-down
+test env).
+
+#### Future: pronunciation matching (Phase 3)
+
+Director suggested recording how each kid's name is pronounced at
+enrollment, and using that audio as the strongest resolution signal.
+Tracked as a TODO comment in `get_child_by_name`. Would add a Pass 5
+that compares audio embeddings — strongest fallback for names where
+Double-Metaphone gives a false negative (e.g. `Emi` vs `Em-ee`, which
+have different codes `AM` vs `AMM`).
+
+### 4. Consent gate
+
+After extraction and resolution, each event passes through
+`get_child_for_processing` (`backend/utils/consent_gate.py`). During
+Phase 1 the gate bypasses via `CONSENT_GATE_DISABLED=true` (see Kill
+Switches). In Phase 2 it queries `children_with_active_consent` and
+returns `None` for any child without active consent, sending the event
+to `pending_consent_queue` instead of the live DB.
+
+### 5. Persistence and downstream
+
+If consent passes, `create_event_from_base` writes the row with:
+
+- `teacher_id` — derived from `teacher.id` (the sender)
+- `child_id` — resolved by `get_child_by_name`, may be `None` on
+  ambiguity
+- `child_name` — what the AI extracted (may differ slightly from the
+  resolved Child.name)
+- `review_tier` — `teacher` for low-stakes types, `director` for
+  incident/medication or confidence < 0.7
+
+The director's queue (`/api/events/pending/teacher`,
+`/api/events/pending/director`) reads from this table and triggers the
+EOD narrative generation after approval (see `events.py` →
+`_refresh_narrative_if_exists`).
+
+### Debugging checklist
+
+When something goes wrong with extraction:
+
+- [ ] Check Sentry for the WhatsApp request span — confirms the audio
+  reached the backend.
+- [ ] Look for `transcription.completed` log with `transcript_length` —
+  confirms Whisper returned text.
+- [ ] Look for `extraction.started` and `extraction.completed` logs —
+  confirms GPT-4o was called and what it returned.
+- [ ] If event saved with `child_id IS NULL`: name resolution failed.
+  Query: which passes ran? Use SQL on `events` joined with `children`
+  to see what `event.child_name` looks like vs `children.name`.
+- [ ] If event was approved but doesn't appear in parent feed: same
+  issue — `get_approved_events_for_child` matches on `child_id OR
+  exact-name`. Backfill `child_id` manually:
+  `UPDATE events SET child_id = '<uuid>' WHERE id = '<event-id>';`
+
+### Kill switches relevant to this pipeline
+
+- `EXTRACTION_DISABLED=true` — short-circuits the whole pipeline.
+  Audio is still deleted from Twilio; the teacher gets a "pending
+  review" reply. See Kill Switches section above.
+- `CONSENT_GATE_DISABLED=true` — bypasses the consent check (Phase 1).
 
 ## Privacy Policy
 
