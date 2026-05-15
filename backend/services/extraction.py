@@ -93,6 +93,7 @@ async def extract_events(
     child_name: Optional[str] = None,
     known_children: Optional[List[str]] = None,
     child_id: Optional[UUID] = None,
+    teacher_name: Optional[str] = None,
 ) -> Tuple[List[BaseEvent], List[str]]:
     """Extract structured events from a transcript using GPT-4o.
 
@@ -103,6 +104,16 @@ async def extract_events(
         child_name:     Optional pre-set child context from /child command
         known_children: Optional list of actual registered child names for resolution
         child_id:       Optional resolved child UUID for the audit log
+        teacher_name:   Optional name of the teacher who sent this voice note.
+                        Two prompt effects:
+                          (a) Prevent the AI from extracting the sender's own
+                              name as a child event.
+                          (b) When the teacher appears as the actor of an
+                              event with a kid ("Emi helped Joii", "I read a
+                              book with Carlos"), attribute the teacher in
+                              `details` text so parents see the interaction
+                              ("Got help from Emi"). The event still belongs
+                              to the child.
 
     Returns:
         Tuple of (validated_events, unrecognized_names)
@@ -122,6 +133,39 @@ async def extract_events(
     elif known_children:
         children_list = ", ".join(known_children)
         user_prompt = f"Known Children in this room: {children_list}\n\n{user_prompt}"
+
+    # Teacher context — the sender narrates events about *children*. Two
+    # behaviors we want from the model:
+    #
+    #   1. Never extract the teacher's own name as if it were a child event.
+    #   2. When the teacher's name appears as the actor of an event (e.g.
+    #      "Emi helped Joii", "I read a book with Carlos"), attribute the
+    #      teacher in `details` so parents see who interacted with their kid
+    #      ("Got help from Emi", "Read a book with Ms. Emi"). The event still
+    #      belongs to the *child* — teacher_name only enriches details.
+    if teacher_name:
+        user_prompt = (
+            f"This voice note was sent by teacher {teacher_name}.\n"
+            f"RULES for teacher attribution:\n"
+            f"  - Never extract {teacher_name} as a child — they are staff.\n"
+            f"  - The teacher's first-person references ('I', 'me', 'my') refer "
+            f"to {teacher_name}. Resolve them to '{teacher_name}' in `details`.\n"
+            f"  - When the teacher and a child interact, the event ALWAYS "
+            f"belongs to the CHILD (child_name = the child). In `details`, "
+            f"include the teacher's name to capture who they interacted with. "
+            f"Direction of action matters — preserve it in the details text:\n"
+            f"      • Teacher → child (teacher acting on/with child):\n"
+            f"          '{teacher_name} helped Joii build a tower'\n"
+            f"            → child=Joii, details: 'Built a tower with help from {teacher_name}'\n"
+            f"          'I read a book to Carlos'\n"
+            f"            → child=Carlos, details: 'Read a book with {teacher_name}'\n"
+            f"      • Child → teacher (child acting on/with teacher):\n"
+            f"          'Carlos helped me organize the toys'\n"
+            f"            → child=Carlos, details: 'Helped {teacher_name} organize the toys'\n"
+            f"          'Joii asked me for a hug'\n"
+            f"            → child=Joii, details: 'Asked {teacher_name} for a hug'\n\n"
+            f"{user_prompt}"
+        )
 
     safe_log(
         logger, "info", "extraction.started",

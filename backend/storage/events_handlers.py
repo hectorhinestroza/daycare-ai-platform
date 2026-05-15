@@ -445,11 +445,18 @@ def get_children_by_center(db: Session, center_id: uuid.UUID) -> List[Child]:
 def get_child_by_name(db: Session, center_id: uuid.UUID, name: str) -> Optional[Child]:
     """Fuzzy name lookup for child resolution.
 
-    Three-pass strategy:
+    Four-pass strategy:
       1. Exact case-insensitive match ("Annie Johnson" → "Annie Johnson")
       2. First-name / prefix match ("Annie" → "Annie Johnson")
-      3. Ambiguity guard: if multiple children match pass 2, return None
-         (better to flag for director review than silently pick the wrong child)
+      3. Contains match as last resort (e.g. middle name used)
+      4. Double-Metaphone phonetic match — catches Whisper mistranscriptions
+         like "Klara" → "Clara", "Em-ee" → "Emi", "Joey" → "Joii".
+      5. Ambiguity guard: if a pass finds multiple kids, return None
+         (better to flag for director review than silently pick the wrong one).
+
+    TODO(pilot v2): when the director records a pronunciation clip at
+    enrollment, store it on the child row and add a Pass 5 that compares
+    audio embeddings as the strongest signal.
     """
     if not name or not name.strip():
         return None
@@ -464,16 +471,47 @@ def get_child_by_name(db: Session, center_id: uuid.UUID, name: str) -> Optional[
 
     # Pass 2: prefix match — name appears at the start of the full name
     prefix_matches = base_q.filter(Child.name.ilike(f"{name} %")).all()
-
-    # Guard against ambiguity — two "Annies" in the same center
     if len(prefix_matches) == 1:
         return prefix_matches[0]
 
-    # Pass 3: contains match as last resort (e.g. middle name used)
+    # Pass 3: contains match (e.g. middle name used)
     if not prefix_matches:
         contains_matches = base_q.filter(Child.name.ilike(f"% {name} %")).all()
         if len(contains_matches) == 1:
             return contains_matches[0]
+
+    # Pass 4: phonetic match — Double Metaphone produces two codes per name.
+    # Match if any code from the input overlaps any code from a child's name
+    # (handles homophones across spellings). Iterates the full roster, fine for
+    # pilot scale; would need a stored metaphone column at 1000s of kids.
+    try:
+        from metaphone import doublemetaphone
+
+        def _codes(s: str) -> set[str]:
+            return {c for c in doublemetaphone(s) if c}
+
+        input_codes = _codes(name)
+        # Also try the first token, so "Annie Johnson" said as "Annie" still matches
+        first_token = name.split()[0] if name else ""
+        if first_token and first_token != name:
+            input_codes |= _codes(first_token)
+
+        if input_codes:
+            all_kids = base_q.all()
+            phonetic = []
+            for kid in all_kids:
+                kid_codes = _codes(kid.name)
+                kid_first = kid.name.split()[0] if kid.name else ""
+                if kid_first and kid_first != kid.name:
+                    kid_codes |= _codes(kid_first)
+                if input_codes & kid_codes:
+                    phonetic.append(kid)
+            if len(phonetic) == 1:
+                return phonetic[0]
+    except ImportError:
+        # metaphone package missing in this environment — silently skip
+        # the phonetic pass rather than break the resolver.
+        pass
 
     # Ambiguous or no match — return None, let event go to director review
     return None

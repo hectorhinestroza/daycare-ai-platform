@@ -306,6 +306,15 @@ export default function TeachersPanel({ centerId, rooms, teachers, addToast, onT
                     Copy
                   </button>
                   <button
+                    onClick={() => window.open(bootstrapUrl, '_blank', 'noopener,noreferrer')}
+                    disabled={!bootstrapUrl || issuing}
+                    className="btn-secondary !py-1 !px-3 text-xs shrink-0 disabled:opacity-40"
+                    title="Open the teacher portal in a new tab"
+                  >
+                    <span className="material-symbols-outlined text-sm mr-1">open_in_new</span>
+                    Open
+                  </button>
+                  <button
                     onClick={() => regenerateTeacherUrl(teacher)}
                     disabled={issuing}
                     className="p-1.5 rounded-full hover:bg-surface-container-high text-outline shrink-0 disabled:opacity-40"

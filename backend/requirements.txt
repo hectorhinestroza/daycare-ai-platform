@@ -16,3 +16,4 @@ Pillow
 apscheduler
 boto3
 sentry-sdk[fastapi]
+metaphone

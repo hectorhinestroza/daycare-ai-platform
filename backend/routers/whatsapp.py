@@ -462,13 +462,25 @@ async def whatsapp_webhook(
             )
 
         try:
+            # Fetch known children up front — used as a Whisper transcription
+            # hint AND as roster context for the GPT-4o extractor. Whisper
+            # biases its output toward terms in the prompt, which materially
+            # improves spelling for unusual names like "Clara", "Loie", "Emi".
+            center_children = get_children_by_center(db, teacher.center_id)
+            known_names = [c.name for c in center_children if c.name]
+            whisper_prompt = (
+                f"Children at this daycare: {', '.join(known_names)}."
+                if known_names else None
+            )
+
             # Download & Transcribe
             audio_bytes, content_type = await download_twilio_media(
                 MediaUrl0
             )
             ext = "ogg" if "ogg" in content_type else "mp4"
             transcript = await transcribe_audio(
-                audio_bytes, f"voice_memo.{ext}"
+                audio_bytes, f"voice_memo.{ext}",
+                prompt=whisper_prompt,
             )
 
             # Zero retention for audio — immediately delete from Twilio and clear memory
@@ -478,16 +490,13 @@ async def whatsapp_webhook(
             del audio_bytes
             gc.collect()
 
-            # 1. Fetch known children for context
-            center_children = get_children_by_center(db, teacher.center_id)
-            known_names = [c.name for c in center_children]
-
             # 2. Extract
             events, unrecognized_names = await extract_events(
                 transcript=transcript,
                 center_id=center_id,
                 child_name=child_context,
                 known_children=known_names,
+                teacher_name=teacher.name,
                 db=db,
             )
 
@@ -528,6 +537,7 @@ async def whatsapp_webhook(
                 center_id=center_id,
                 child_name=child_context,
                 known_children=known_names,
+                teacher_name=teacher.name,
                 db=db,
             )
 
