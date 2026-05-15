@@ -14,6 +14,7 @@ from backend.storage.events_handlers import (
     approve_event,
     create_event,
     create_event_from_base,
+    get_child_by_name,
     get_event,
     get_events_by_child,
     get_events_pending_director,
@@ -21,7 +22,7 @@ from backend.storage.events_handlers import (
     get_teacher_by_phone,
     reject_event,
 )
-from backend.storage.models import Center, Room, Teacher
+from backend.storage.models import Center, Child, Room, Teacher
 from schemas.events import BaseEvent, EventType
 
 # ─── Fixtures ─────────────────────────────────────────────────
@@ -302,3 +303,70 @@ class TestCreateFromBase:
         assert event.event_type == "food"
         assert event.confidence_score == 0.95
         assert event.status == "PENDING"
+
+
+# ─── get_child_by_name (4-pass resolver) ─────────────────────────
+
+
+class TestGetChildByName:
+    """Exercise each of the resolver's passes:
+       1. Exact match  2. Prefix match  3. Contains match  4. Phonetic match.
+    """
+
+    def _add_kid(self, db, center, name):
+        kid = Child(id=uuid.uuid4(), center_id=center.id, name=name, status="ACTIVE")
+        db.add(kid)
+        db.commit()
+        return kid
+
+    def test_exact_match(self, db, center_a):
+        kid = self._add_kid(db, center_a, "Annie Johnson")
+        assert get_child_by_name(db, center_a.id, "Annie Johnson").id == kid.id
+        # Case-insensitive
+        assert get_child_by_name(db, center_a.id, "annie johnson").id == kid.id
+
+    def test_prefix_match(self, db, center_a):
+        kid = self._add_kid(db, center_a, "Annie Johnson")
+        assert get_child_by_name(db, center_a.id, "Annie").id == kid.id
+
+    def test_prefix_match_ambiguous_returns_none(self, db, center_a):
+        self._add_kid(db, center_a, "Annie Smith")
+        self._add_kid(db, center_a, "Annie Jones")
+        assert get_child_by_name(db, center_a.id, "Annie") is None
+
+    def test_phonetic_match_clara(self, db, center_a):
+        """Whisper mistranscribes 'Clara' as 'Klara'; phonetic resolves it."""
+        kid = self._add_kid(db, center_a, "Clara")
+        assert get_child_by_name(db, center_a.id, "Klara").id == kid.id
+
+    def test_phonetic_match_emi(self, db, center_a):
+        """Whisper variants of 'Emi' (Amy, Emmy, Aimee) should all resolve."""
+        kid = self._add_kid(db, center_a, "Emi")
+        for variant in ["Emmy", "Aimee", "Amy"]:
+            resolved = get_child_by_name(db, center_a.id, variant)
+            assert resolved is not None and resolved.id == kid.id, (
+                f"phonetic pass missed Whisper variant '{variant}'"
+            )
+
+    def test_phonetic_match_loie(self, db, center_a):
+        kid = self._add_kid(db, center_a, "Loie")
+        for variant in ["Lowee", "Lowey"]:
+            resolved = get_child_by_name(db, center_a.id, variant)
+            assert resolved is not None and resolved.id == kid.id
+
+    def test_phonetic_match_ambiguous_returns_none(self, db, center_a):
+        """If two kids share the same phonetic code, resolver bails to None."""
+        self._add_kid(db, center_a, "Emi")
+        self._add_kid(db, center_a, "Amy")
+        # Both -> 'AM' code; ambiguous
+        assert get_child_by_name(db, center_a.id, "Emmy") is None
+
+    def test_no_match_returns_none(self, db, center_a):
+        self._add_kid(db, center_a, "Annie")
+        # Completely unrelated phonetic profile
+        assert get_child_by_name(db, center_a.id, "Brennan") is None
+
+    def test_blank_input_returns_none(self, db, center_a):
+        self._add_kid(db, center_a, "Annie")
+        assert get_child_by_name(db, center_a.id, "") is None
+        assert get_child_by_name(db, center_a.id, "   ") is None

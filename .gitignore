@@ -29,6 +29,10 @@ Thumbs.db
 # Dev scripts (contain local data)
 scripts/seed_dev.py
 
+# Local dev SQLite DB created by scripts/seed_local_dev.py
+local.db
+local.db-journal
+
 # Frontend
 node_modules/
 frontend/console/dist/

@@ -10,12 +10,21 @@ from backend.utils.safe_logging import safe_log
 logger = logging.getLogger(__name__)
 
 
-async def transcribe_audio(audio_bytes: bytes, filename: str = "audio.ogg") -> str:
+async def transcribe_audio(
+    audio_bytes: bytes,
+    filename: str = "audio.ogg",
+    prompt: str | None = None,
+) -> str:
     """Transcribe audio bytes using OpenAI Whisper API.
 
     Args:
         audio_bytes: Raw audio file bytes (.ogg or .mp4)
-        filename: Original filename with extension for format detection
+        filename:    Original filename with extension for format detection
+        prompt:      Optional hint string passed to Whisper to bias
+                     transcription toward the included terms. Use this to
+                     pass the child roster ("Children at this daycare:
+                     Clara, Loie, Emi, ...") so unusual or non-English
+                     names spell correctly. Up to ~244 tokens (~1000 chars).
 
     Returns:
         Transcript string
@@ -33,11 +42,15 @@ async def transcribe_audio(audio_bytes: bytes, filename: str = "audio.ogg") -> s
         audio_file = io.BytesIO(audio_bytes)
         audio_file.name = filename
 
-        transcript = await client.audio.transcriptions.create(
-            model="whisper-1",
-            file=audio_file,
-            response_format="text",
-        )
+        kwargs = {
+            "model": "whisper-1",
+            "file": audio_file,
+            "response_format": "text",
+        }
+        if prompt:
+            kwargs["prompt"] = prompt
+
+        transcript = await client.audio.transcriptions.create(**kwargs)
 
         transcript_text = transcript.strip()
 
