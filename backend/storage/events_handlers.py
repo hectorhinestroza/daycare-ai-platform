@@ -62,29 +62,34 @@ def create_event_from_base(
     base_event,  # schemas.events.BaseEvent
     teacher_id: Optional[uuid.UUID] = None,
     child_id: Optional[uuid.UUID] = None,
+    actor_id: Optional[uuid.UUID] = None,
+    actor_type: str = "teacher",
 ) -> Event:
     """Create a DB event from a Pydantic BaseEvent (post-extraction).
 
     If the event meets the auto-approve threshold (teacher tier + high confidence),
-    it is written as APPROVED immediately and logged with action AUTO_APPROVE.
+    or is created by a director, it is written as APPROVED immediately and logged.
     """
     from backend.config import get_settings
     threshold = get_settings().auto_approve_confidence_threshold
 
-    auto_approved = (
-        threshold > 0
-        and base_event.review_tier == "teacher"
-        and base_event.confidence_score >= threshold
-    )
+    if actor_type == "director":
+        auto_approved = True
+    else:
+        auto_approved = (
+            threshold > 0
+            and base_event.review_tier == "teacher"
+            and base_event.confidence_score >= threshold
+        )
 
     now = datetime.now(UTC)
     event = Event(
         id=base_event.id,
         center_id=uuid.UUID(base_event.center_id) if isinstance(base_event.center_id, str) else base_event.center_id,
         child_id=child_id,
-        teacher_id=teacher_id,
+        teacher_id=teacher_id if actor_type == "teacher" else None,
         child_name=base_event.child_name,
-        event_type=base_event.event_type.value,
+        event_type=base_event.event_type.value if hasattr(base_event.event_type, "value") else str(base_event.event_type),
         event_time=base_event.event_time,
         details=base_event.details,
         raw_transcript=base_event.raw_transcript,
@@ -92,7 +97,8 @@ def create_event_from_base(
         confidence_score=base_event.confidence_score,
         needs_director_review=base_event.needs_director_review,
         needs_review=base_event.needs_review,
-        status="APPROVED" if auto_approved else base_event.status.value,
+        status="APPROVED" if auto_approved else base_event.status.value if hasattr(base_event.status, "value") else str(base_event.status),
+        reviewed_by=actor_id if (auto_approved and actor_type == "director") else None,
         reviewed_at=now if auto_approved else None,
         applies_to_all=getattr(base_event, "applies_to_all", False),
         batch_id=getattr(base_event, "batch_id", None),
@@ -105,9 +111,11 @@ def create_event_from_base(
         log_activity(
             db,
             event.center_id,
-            "AUTO_APPROVE",
+            "APPROVE" if actor_type == "director" else "AUTO_APPROVE",
             event_id=event.id,
             child_id=event.child_id,
+            actor_id=actor_id,
+            actor_type=actor_type,
             details={"child_name": event.child_name, "event_type": event.event_type},
         )
 
@@ -120,12 +128,15 @@ def fan_out_batch_event(
     teacher_id: Optional[uuid.UUID],
     base_event,  # schemas.events.BaseEvent with applies_to_all=True
     environment: str = "development",
+    room_id: Optional[uuid.UUID] = None,
+    actor_id: Optional[uuid.UUID] = None,
+    actor_type: str = "teacher",
 ) -> List[Event]:
-    """Fan out a group event to one Event row per active child in the teacher's room.
+    """Fan out a group event to one Event row per active child in the classroom.
 
     Rules:
     - Incidents and medication are NEVER fanned out — returned as-is for director.
-    - If the teacher has no room_id, returns the event unchanged (director queue).
+    - If no room_id is passed or assigned, returns the event unchanged (director queue).
     - All fanned-out siblings share a batch_id UUID for grouped review in the UI.
     - Each fanned-out child passes through the consent gate. Children without
       active consent are skipped (the gate queues their event in
@@ -138,21 +149,32 @@ def fan_out_batch_event(
 
     # High-stakes types stay as a single director-queue event
     if event_type_str in _NEVER_FAN_OUT_TYPES:
-        db_event = create_event_from_base(db, base_event, teacher_id=teacher_id)
+        db_event = create_event_from_base(
+            db, base_event,
+            teacher_id=teacher_id if actor_type == "teacher" else None,
+            actor_id=actor_id,
+            actor_type=actor_type,
+        )
         return [db_event]
 
-    # Resolve teacher's room
-    teacher = db.query(Teacher).filter(Teacher.id == teacher_id).first() if teacher_id else None
-    room_id = teacher.room_id if teacher else None
+    # Resolve room if not provided explicitly
+    if not room_id:
+        teacher = db.query(Teacher).filter(Teacher.id == teacher_id).first() if teacher_id else None
+        room_id = teacher.room_id if teacher else None
 
     if not room_id:
         # No room assigned — treat as low-confidence single event, director queue
         import logging
         logging.getLogger(__name__).warning(
-            f"fan_out_batch_event: teacher {teacher_id} has no room_id, falling back to single event"
+            f"fan_out_batch_event: no room resolved, falling back to single event"
         )
         fallback = base_event.model_copy(update={"review_tier": "director", "needs_director_review": True, "confidence_score": 0.3})
-        db_event = create_event_from_base(db, fallback, teacher_id=teacher_id)
+        db_event = create_event_from_base(
+            db, fallback,
+            teacher_id=teacher_id if actor_type == "teacher" else None,
+            actor_id=actor_id,
+            actor_type=actor_type,
+        )
         return [db_event]
 
     children = (
@@ -163,7 +185,12 @@ def fan_out_batch_event(
 
     if not children:
         # Room exists but no active children — return single event to director
-        db_event = create_event_from_base(db, base_event, teacher_id=teacher_id)
+        db_event = create_event_from_base(
+            db, base_event,
+            teacher_id=teacher_id if actor_type == "teacher" else None,
+            actor_id=actor_id,
+            actor_type=actor_type,
+        )
         return [db_event]
 
     shared_batch_id = uuid.uuid4()
@@ -189,7 +216,13 @@ def fan_out_batch_event(
             "batch_id": shared_batch_id,
             "applies_to_all": True,
         })
-        db_event = create_event_from_base(db, sibling, teacher_id=teacher_id, child_id=child.id)
+        db_event = create_event_from_base(
+            db, sibling,
+            teacher_id=teacher_id if actor_type == "teacher" else None,
+            child_id=child.id,
+            actor_id=actor_id,
+            actor_type=actor_type,
+        )
         created.append(db_event)
 
     return created

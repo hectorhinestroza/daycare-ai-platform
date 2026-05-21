@@ -14,7 +14,7 @@ from sqlalchemy.pool import StaticPool
 
 from backend.main import app
 from backend.storage.database import Base, get_db
-from backend.storage.models import Center, Event, Teacher
+from backend.storage.models import Center, Event, Teacher, Admin, Room, Child
 from schemas.events import BaseEvent, EventStatus, EventType
 
 # In-memory DB for router testing
@@ -228,3 +228,176 @@ class TestKillSwitch:
         mock_extract.assert_not_called()
 
         get_settings.cache_clear()
+
+
+class TestDirectorWebhook:
+    """Test webhook logic specific to directors/admins."""
+
+    @patch("backend.routers.whatsapp.extract_events", new_callable=AsyncMock)
+    def test_director_text_submission_auto_approves(self, mock_extract, setup_db):
+        db = setup_db
+        center = db.query(Center).first()
+
+        # Seed an admin
+        admin = Admin(
+            id=uuid.uuid4(),
+            center_id=center.id,
+            email="director@test.com",
+            phone="+1999999999",
+            name="Director Jane",
+            is_active=True,
+        )
+        db.add(admin)
+        db.commit()
+
+        mock_extract.return_value = (
+            [
+                BaseEvent(
+                    id=uuid.uuid4(),
+                    center_id=str(center.id),
+                    child_name="Emma",
+                    event_type=EventType.FOOD,
+                    confidence_score=0.5,  # Low confidence, but should still auto-approve because director sent it!
+                    review_tier="teacher",
+                    needs_director_review=False,
+                    needs_review=False,
+                    status=EventStatus.PENDING,
+                    raw_transcript="Emma ate lunch",
+                )
+            ],
+            [],
+        )
+
+        response = client.post(
+            "/webhook/whatsapp",
+            data={
+                "From": "+1999999999",
+                "Body": "Emma ate lunch",
+                "NumMedia": "0",
+            },
+        )
+        assert response.status_code == 200
+        assert "Auto-approved" in response.text
+
+        # Verify DB save
+        saved_events = db.query(Event).all()
+        assert len(saved_events) == 1
+        assert saved_events[0].child_name == "Emma"
+        assert saved_events[0].status == "APPROVED"
+        assert saved_events[0].teacher_id is None
+        assert saved_events[0].reviewed_by == admin.id
+
+        # Verify Activity Log
+        from backend.storage.models import ActivityLog
+        log = db.query(ActivityLog).filter_by(action="APPROVE").first()
+        assert log is not None
+        assert log.actor_id == admin.id
+        assert log.actor_type == "director"
+
+    def test_director_photo_without_context_blocked(self, setup_db):
+        db = setup_db
+        center = db.query(Center).first()
+
+        admin = Admin(
+            id=uuid.uuid4(),
+            center_id=center.id,
+            email="director2@test.com",
+            phone="+1999999998",
+            name="Director Bob",
+            is_active=True,
+        )
+        db.add(admin)
+        db.commit()
+
+        response = client.post(
+            "/webhook/whatsapp",
+            data={
+                "From": "+1999999998",
+                "Body": "",
+                "NumMedia": "1",
+                "MediaUrl0": "https://api.twilio.com/media/testphoto",
+                "MediaContentType0": "image/jpeg",
+            },
+        )
+        assert response.status_code == 200
+        assert "please set a child context first" in response.text
+
+        # Verify no pending photo was created
+        from backend.storage.models import PendingPhoto
+        assert db.query(PendingPhoto).count() == 0
+
+    @patch("backend.routers.whatsapp.extract_events", new_callable=AsyncMock)
+    def test_director_batch_fan_out_classroom_context(self, mock_extract, setup_db):
+        db = setup_db
+        center = db.query(Center).first()
+
+        admin = Admin(
+            id=uuid.uuid4(),
+            center_id=center.id,
+            email="director3@test.com",
+            phone="+1999999997",
+            name="Director Dan",
+            is_active=True,
+        )
+        db.add(admin)
+
+        # Seed room and kids
+        room = Room(id=uuid.uuid4(), center_id=center.id, name="Toddlers")
+        db.add(room)
+        db.commit()
+
+        child1 = Child(id=uuid.uuid4(), center_id=center.id, room_id=room.id, name="Kid One", status="ACTIVE")
+        child2 = Child(id=uuid.uuid4(), center_id=center.id, room_id=room.id, name="Kid Two", status="ACTIVE")
+        db.add_all([child1, child2])
+        db.commit()
+
+        # Set context via /classroom Toddlers command first
+        response = client.post(
+            "/webhook/whatsapp",
+            data={"From": "+1999999997", "Body": "/classroom Toddlers", "NumMedia": "0"},
+        )
+        assert response.status_code == 200
+        assert "context set to classroom" in response.text.lower()
+
+        # Mock the extracted event as a group/batch event
+        mock_extract.return_value = (
+            [
+                BaseEvent(
+                    id=uuid.uuid4(),
+                    center_id=str(center.id),
+                    child_name="All children",
+                    event_type=EventType.NAP,
+                    confidence_score=0.9,
+                    review_tier="teacher",
+                    needs_director_review=False,
+                    needs_review=False,
+                    status=EventStatus.PENDING,
+                    raw_transcript="Everyone is napping",
+                    applies_to_all=True,
+                )
+            ],
+            [],
+        )
+
+        # Send text event
+        response = client.post(
+            "/webhook/whatsapp",
+            data={
+                "From": "+1999999997",
+                "Body": "Everyone is napping",
+                "NumMedia": "0",
+            },
+        )
+        assert response.status_code == 200
+        assert "Auto-approved" in response.text
+        assert "All children" in response.text
+
+        # Verify DB events were fanned out to both children in the Toddlers room
+        events = db.query(Event).all()
+        assert len(events) == 2
+        child_ids = {e.child_id for e in events}
+        assert child_ids == {child1.id, child2.id}
+        for e in events:
+            assert e.status == "APPROVED"
+            assert e.teacher_id is None
+            assert e.reviewed_by == admin.id

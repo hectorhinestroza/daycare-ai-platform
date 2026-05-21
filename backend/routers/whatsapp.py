@@ -29,7 +29,7 @@ from backend.storage.events_handlers import (
     get_pending_photos_by_teacher,
     get_teacher_by_phone,
 )
-from backend.storage.models import PendingEvent
+from backend.storage.models import Admin, PendingEvent, Room
 from backend.utils.consent_gate import get_child_for_processing
 from backend.utils.media import delete_twilio_media_with_retry, download_twilio_media
 from backend.utils.photo import build_pending_s3_key, build_photo_s3_key, strip_exif
@@ -176,7 +176,7 @@ def _format_event_summary(events: list, auto_approved_ids: set) -> str:
 
 async def _process_and_persist_events(
     db: Session,
-    teacher: any,
+    sender: any,
     events: list,
     unrecognized_names: list,
     transcript: str,
@@ -195,30 +195,48 @@ async def _process_and_persist_events(
         else:
             recognized_events.append(base_event)
 
+    # Determine sender details
+    is_director = hasattr(sender, "role") and sender.role in ("director", "admin")
+    sender_role = "director" if is_director else "teacher"
+    actor_id = sender.id
+
     # 1. Persist valid events immediately (consent-gated per child)
     settings = get_settings()
     blocked_count = 0
     for base_event in recognized_events:
         if getattr(base_event, "applies_to_all", False):
-            # Group event — fan out to all active children in the teacher's room.
-            # The fan-out function gates each child individually.
+            # Group event — fan out to all active children in the classroom.
+            room_id = None
+            if is_director and phone:
+                cmd_context = _get_command_context(phone)
+                classroom_context = cmd_context.get("classroom")
+                if classroom_context:
+                    room = db.query(Room).filter(Room.center_id == sender.center_id, Room.name.ilike(classroom_context)).first()
+                    if room:
+                        room_id = room.id
+
             created = fan_out_batch_event(
-                db, teacher.center_id, teacher.id, base_event,
+                db, sender.center_id,
+                teacher_id=None if is_director else sender.id,
+                base_event=base_event,
                 environment=settings.environment,
+                room_id=room_id,
+                actor_id=actor_id,
+                actor_type=sender_role,
             )
             batch_fan_out_count += len(created)
             auto_approved_ids.update(str(e.id) for e in created if e.status == "APPROVED")
             logger.info(
-                f"Batch fan-out: {len(created)} events created for teacher {teacher.id}"
+                f"Batch fan-out: {len(created)} events created for {sender_role} {sender.id}"
             )
         else:
-            child = get_child_by_name(db, teacher.center_id, base_event.child_name)
+            child = get_child_by_name(db, sender.center_id, base_event.child_name)
             if child is not None:
                 # Consent gate: in production, blocks events for children without
                 # active parental consent and queues them in pending_consent_queue.
                 gated = get_child_for_processing(
                     child_id=child.id,
-                    center_id=teacher.center_id,
+                    center_id=sender.center_id,
                     db=db,
                     environment=settings.environment,
                     pipeline_stage="event_extraction",
@@ -228,11 +246,17 @@ async def _process_and_persist_events(
                     blocked_count += 1
                     logger.info(
                         f"consent_gate.blocked_event child_id={child.id} "
-                        f"center_id={teacher.center_id}"
+                        f"center_id={sender.center_id}"
                     )
                     continue
             child_id = child.id if child else None
-            db_event = create_event_from_base(db, base_event, teacher_id=teacher.id, child_id=child_id)
+            db_event = create_event_from_base(
+                db, base_event,
+                teacher_id=None if is_director else sender.id,
+                child_id=child_id,
+                actor_id=actor_id,
+                actor_type=sender_role,
+            )
             if db_event.status == "APPROVED":
                 auto_approved_ids.add(str(base_event.id))
 
@@ -249,8 +273,8 @@ async def _process_and_persist_events(
     if unrecognized_events:
         for base_event in unrecognized_events:
             fb = PendingEvent(
-                center_id=teacher.center_id,
-                teacher_phone=teacher.phone,
+                center_id=sender.center_id,
+                teacher_phone=sender.phone,
                 unrecognized_name=base_event.child_name,
                 original_transcript=transcript,
                 pending_event_data=json.loads(base_event.model_dump_json()),
@@ -333,32 +357,42 @@ async def whatsapp_webhook(
         if command_reply and not is_child_command:
             return _build_twiml_response(command_reply)
 
-    # 2. Look up Teacher from DB
-    teacher = get_teacher_by_phone(db, phone)
-    if not teacher:
-        safe_log(logger, "warning", "webhook.teacher_unknown", phone_hash=_phone_hash(phone))
+    # 2. Look up Teacher or Admin (Director) from DB
+    sender = get_teacher_by_phone(db, phone)
+    is_director = False
+    sender_role = "teacher"
+    if sender:
+        sender_role = "teacher"
+    else:
+        sender = db.query(Admin).filter(Admin.phone == phone, Admin.is_active == True).first()
+        if sender:
+            is_director = True
+            sender_role = "director"
+
+    if not sender:
+        safe_log(logger, "warning", "webhook.sender_unknown", phone_hash=_phone_hash(phone))
         if command_reply:
             # Still return command reply for unregistered users
             return _build_twiml_response(command_reply)
         return _build_twiml_response(
-            "❌ This phone number is not registered as a teacher account."
+            "❌ This phone number is not registered as a teacher or director account."
         )
 
     safe_log(
-        logger, "info", "webhook.teacher_resolved",
-        teacher_id=str(teacher.id), center_id=str(teacher.center_id),
+        logger, "info", f"webhook.{sender_role}_resolved",
+        sender_id=str(sender.id), center_id=str(sender.center_id),
     )
 
-    center_id = str(teacher.center_id)
+    center_id = str(sender.center_id)
     cmd_context = _get_command_context(phone)
     child_context = cmd_context.get("child_name")
 
     # 2.1 If /child command was just set, resolve any pending photos
     if is_child_command and child_context:
         reply = command_reply
-        pending = get_pending_photos_by_teacher(db, teacher.id)
+        pending = [] if is_director else get_pending_photos_by_teacher(db, sender.id)
         if pending:
-            child = get_child_by_name(db, teacher.center_id, child_context)
+            child = get_child_by_name(db, sender.center_id, child_context)
             if child:
                 settings = get_settings()
                 processed = 0
@@ -366,7 +400,7 @@ async def whatsapp_webhook(
                     try:
                         child_record = get_child_for_processing(
                             child_id=child.id,
-                            center_id=teacher.center_id,
+                            center_id=sender.center_id,
                             db=db,
                             environment=settings.environment,
                             pipeline_stage="photo_upload",
@@ -381,11 +415,11 @@ async def whatsapp_webhook(
                             continue
 
                         clean_bytes = download_from_s3(p.s3_temp_key)
-                        final_key = build_photo_s3_key(teacher.center_id, child.id)
+                        final_key = build_photo_s3_key(sender.center_id, child.id)
                         upload_photo(clean_bytes, final_key)
                         create_photo(
                             db,
-                            center_id=teacher.center_id,
+                            center_id=sender.center_id,
                             child_id=child.id,
                             s3_key=final_key,
                             caption=p.caption,
@@ -422,7 +456,7 @@ async def whatsapp_webhook(
                 )
             else:
                 new_name = body.strip()
-                child = get_child_by_name(db, teacher.center_id, new_name)
+                child = get_child_by_name(db, sender.center_id, new_name)
                 child_id = child.id if child else None
 
                 events_created = 0
@@ -436,8 +470,10 @@ async def whatsapp_webhook(
                         create_event_from_base(
                             db,
                             base_event,
-                            teacher_id=teacher.id,
+                            teacher_id=None if is_director else sender.id,
                             child_id=child_id,
+                            actor_id=sender.id,
+                            actor_type=sender_role,
                         )
                         events_created += 1
                         db.delete(fb)
@@ -478,7 +514,7 @@ async def whatsapp_webhook(
             # hint AND as roster context for the GPT-4o extractor. Whisper
             # biases its output toward terms in the prompt, which materially
             # improves spelling for unusual names like "Clara", "Loie", "Emi".
-            center_children = get_children_by_center(db, teacher.center_id)
+            center_children = get_children_by_center(db, sender.center_id)
             known_names = [c.name for c in center_children if c.name]
             whisper_prompt = (
                 f"Children at this daycare: {', '.join(known_names)}."
@@ -508,14 +544,14 @@ async def whatsapp_webhook(
                 center_id=center_id,
                 child_name=child_context,
                 known_children=known_names,
-                teacher_name=teacher.name,
+                teacher_name=sender.name,
                 db=db,
             )
 
             # 3. Route to Database
             return await _process_and_persist_events(
                 db=db,
-                teacher=teacher,
+                sender=sender,
                 events=events,
                 unrecognized_names=unrecognized_names,
                 transcript=transcript,
@@ -541,7 +577,7 @@ async def whatsapp_webhook(
             )
         try:
             # Extract
-            center_children = get_children_by_center(db, teacher.center_id)
+            center_children = get_children_by_center(db, sender.center_id)
             known_names = [c.name for c in center_children]
 
             events, unrecognized_names = await extract_events(
@@ -549,13 +585,13 @@ async def whatsapp_webhook(
                 center_id=center_id,
                 child_name=child_context,
                 known_children=known_names,
-                teacher_name=teacher.name,
+                teacher_name=sender.name,
                 db=db,
             )
 
             return await _process_and_persist_events(
                 db=db,
-                teacher=teacher,
+                sender=sender,
                 events=events,
                 unrecognized_names=unrecognized_names,
                 transcript=body,
@@ -594,7 +630,7 @@ async def whatsapp_webhook(
 
             if child_context:
                 # Happy path: child context is set → full pipeline
-                child = get_child_by_name(db, teacher.center_id, child_context)
+                child = get_child_by_name(db, sender.center_id, child_context)
                 if not child:
                     return _build_twiml_response(
                         f"❌ Child '{child_context}' not found in roster. Photo not saved."
@@ -602,7 +638,7 @@ async def whatsapp_webhook(
 
                 child_record = get_child_for_processing(
                     child_id=child.id,
-                    center_id=teacher.center_id,
+                    center_id=sender.center_id,
                     db=db,
                     environment=settings.environment,
                     pipeline_stage="photo_upload",
@@ -612,11 +648,11 @@ async def whatsapp_webhook(
                         f"❌ No parental consent for {child_context}. Photo not saved."
                     )
 
-                s3_key = build_photo_s3_key(teacher.center_id, child.id)
+                s3_key = build_photo_s3_key(sender.center_id, child.id)
                 upload_photo(clean_bytes, s3_key)
                 create_photo(
                     db,
-                    center_id=teacher.center_id,
+                    center_id=sender.center_id,
                     child_id=child.id,
                     s3_key=s3_key,
                     caption=caption,
@@ -628,20 +664,24 @@ async def whatsapp_webhook(
                     msg += f' Caption: "{caption}"'
                 return _build_twiml_response(msg)
             else:
+                if is_director:
+                    return _build_twiml_response(
+                        "⚠️ As a director, please set a child context first using /child [name] before sending photos."
+                    )
                 # No child context → store as pending, prompt teacher
-                s3_temp_key = build_pending_s3_key(teacher.center_id, teacher.id)
+                s3_temp_key = build_pending_s3_key(sender.center_id, sender.id)
                 upload_photo(clean_bytes, s3_temp_key)
                 expires_at = datetime.now(UTC) + timedelta(minutes=30)
                 create_pending_photo(
                     db,
-                    center_id=teacher.center_id,
-                    teacher_id=teacher.id,
+                    center_id=sender.center_id,
+                    teacher_id=sender.id,
                     s3_temp_key=s3_temp_key,
                     caption=caption,
                     content_type="image/jpeg",
                     expires_at=expires_at,
                 )
-                logger.info(f"Photo stored as pending for teacher {teacher.id}")
+                logger.info(f"Photo stored as pending for teacher {sender.id}")
                 return _build_twiml_response(
                     "📷 Photo received! Please assign it to a child with /child [name]"
                 )
