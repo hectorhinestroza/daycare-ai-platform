@@ -286,13 +286,13 @@ class TestTeacherLookup:
 
 class TestCreateFromBase:
     def test_create_from_pydantic_model(self, db, center_a):
-        """Verify Pydantic BaseEvent → SQLAlchemy Event conversion."""
+        """Verify Pydantic BaseEvent → SQLAlchemy Event conversion (low confidence → PENDING)."""
         base = BaseEvent(
             id=uuid.uuid4(),
             center_id=str(center_a.id),
             child_name="Jason",
             event_type=EventType.FOOD,
-            confidence_score=0.95,
+            confidence_score=0.50,
             review_tier="teacher",
             needs_director_review=False,
             needs_review=False,
@@ -301,7 +301,7 @@ class TestCreateFromBase:
         event = create_event_from_base(db, base)
         assert event.child_name == "Jason"
         assert event.event_type == "food"
-        assert event.confidence_score == 0.95
+        assert event.confidence_score == 0.50
         assert event.status == "PENDING"
 
 
@@ -370,3 +370,65 @@ class TestGetChildByName:
         self._add_kid(db, center_a, "Annie")
         assert get_child_by_name(db, center_a.id, "") is None
         assert get_child_by_name(db, center_a.id, "   ") is None
+
+
+# ─── Auto-Approval Tests ─────────────────────────────────────
+
+
+class TestAutoApproval:
+    """Verify the confidence-threshold auto-approval logic in create_event_from_base."""
+
+    def _base(self, center_a, confidence, review_tier="teacher", event_type=EventType.FOOD):
+        return BaseEvent(
+            id=uuid.uuid4(),
+            center_id=str(center_a.id),
+            child_name="Jason",
+            event_type=event_type,
+            confidence_score=confidence,
+            review_tier=review_tier,
+            needs_director_review=(review_tier == "director"),
+            needs_review=False,
+            raw_transcript="test",
+        )
+
+    def test_high_confidence_teacher_tier_is_approved(self, db, center_a):
+        event = create_event_from_base(db, self._base(center_a, 0.90))
+        assert event.status == "APPROVED"
+        assert event.reviewed_at is not None
+
+    def test_low_confidence_teacher_tier_is_pending(self, db, center_a):
+        event = create_event_from_base(db, self._base(center_a, 0.70))
+        assert event.status == "PENDING"
+        assert event.reviewed_at is None
+
+    def test_exact_threshold_is_approved(self, db, center_a):
+        event = create_event_from_base(db, self._base(center_a, 0.80))
+        assert event.status == "APPROVED"
+
+    def test_just_below_threshold_is_pending(self, db, center_a):
+        event = create_event_from_base(db, self._base(center_a, 0.79))
+        assert event.status == "PENDING"
+
+    def test_incident_high_confidence_stays_pending(self, db, center_a):
+        """Incidents are director-tier regardless of confidence score."""
+        base = self._base(center_a, 0.99, review_tier="director", event_type=EventType.INCIDENT)
+        event = create_event_from_base(db, base)
+        assert event.status == "PENDING"
+
+    def test_medication_high_confidence_stays_pending(self, db, center_a):
+        """Medication is director-tier regardless of confidence score."""
+        base = self._base(center_a, 0.99, review_tier="director", event_type=EventType.MEDICATION)
+        event = create_event_from_base(db, base)
+        assert event.status == "PENDING"
+
+    def test_threshold_disabled_always_pending(self, db, center_a, monkeypatch):
+        """Setting threshold to 0.0 disables auto-approval entirely."""
+        from backend import config as cfg
+        cfg.get_settings.cache_clear()
+        monkeypatch.setenv("AUTO_APPROVE_CONFIDENCE_THRESHOLD", "0.0")
+        cfg.get_settings.cache_clear()
+        try:
+            event = create_event_from_base(db, self._base(center_a, 0.99))
+            assert event.status == "PENDING"
+        finally:
+            cfg.get_settings.cache_clear()

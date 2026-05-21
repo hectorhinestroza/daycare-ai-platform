@@ -133,35 +133,43 @@ def _handle_command(phone: str, body: str) -> Optional[str]:
     return None
 
 
-def _format_event_summary(events: list) -> str:
-    """Format a confirmation message summarizing extracted events."""
+def _format_event_summary(events: list, auto_approved_ids: set) -> str:
+    """Format a confirmation message summarizing extracted events.
+
+    auto_approved_ids: set of event IDs (as str or UUID) that were auto-approved
+    at persist time. Used to split the summary into auto-approved vs. pending review.
+    """
     if not events:
         return "🤔 I couldn't extract any events from that memo. Could you try again?"
 
-    # Group by child (batch events labelled as 'All children')
-    by_child: Dict[str, list] = {}
-    for event in events:
-        name = "All children" if getattr(event, "applies_to_all", False) else event.child_name
-        if name not in by_child:
-            by_child[name] = []
-        by_child[name].append(
-            event.event_type.value.lower().replace("_", " ")
-        )
+    def _label(e) -> str:
+        return "All children" if getattr(e, "applies_to_all", False) else e.child_name
 
-    parts = []
-    for child, types in by_child.items():
-        type_summary = ", ".join(
-            f"{types.count(t)} {t}" for t in dict.fromkeys(types)
-        )
-        parts.append(f"{child} ({type_summary})")
+    def _type_str(e) -> str:
+        return e.event_type.value.lower().replace("_", " ")
+
+    auto: Dict[str, list] = {}
+    pending: Dict[str, list] = {}
+
+    for event in events:
+        bucket = auto if str(event.id) in {str(i) for i in auto_approved_ids} else pending
+        name = _label(event)
+        bucket.setdefault(name, []).append(_type_str(event))
+
+    def _summarise_bucket(bucket: Dict[str, list]) -> str:
+        parts = []
+        for child, types in bucket.items():
+            type_summary = ", ".join(f"{types.count(t)} {t}" for t in dict.fromkeys(types))
+            parts.append(f"{child} ({type_summary})")
+        return " and ".join(parts)
 
     total = len(events)
-    children_str = " and ".join(parts)
-    review_count = sum(1 for e in events if e.needs_review)
+    msg = f"Got it! Logged {total} event{'s' if total != 1 else ''}."
 
-    msg = f"Got it! Parsed {total} event{'s' if total != 1 else ''} for {children_str}."
-    if review_count:
-        msg += f"\n⚠️ {review_count} event{'s' if review_count != 1 else ''} flagged for review."
+    if auto:
+        msg += f"\n✅ Auto-approved: {_summarise_bucket(auto)}."
+    if pending:
+        msg += f"\n⏳ Sent for review: {_summarise_bucket(pending)}."
 
     return msg
 
@@ -179,6 +187,7 @@ async def _process_and_persist_events(
     recognized_events = []
     unrecognized_events = []
     batch_fan_out_count = 0
+    auto_approved_ids: set = set()
 
     for base_event in events:
         if base_event.child_name in unrecognized_names:
@@ -198,6 +207,7 @@ async def _process_and_persist_events(
                 environment=settings.environment,
             )
             batch_fan_out_count += len(created)
+            auto_approved_ids.update(str(e.id) for e in created if e.status == "APPROVED")
             logger.info(
                 f"Batch fan-out: {len(created)} events created for teacher {teacher.id}"
             )
@@ -222,7 +232,9 @@ async def _process_and_persist_events(
                     )
                     continue
             child_id = child.id if child else None
-            create_event_from_base(db, base_event, teacher_id=teacher.id, child_id=child_id)
+            db_event = create_event_from_base(db, base_event, teacher_id=teacher.id, child_id=child_id)
+            if db_event.status == "APPROVED":
+                auto_approved_ids.add(str(base_event.id))
 
     # 1.5 If the transcript named a child different from the /child context,
     # honor what was actually said and clear the stale context.
@@ -250,7 +262,7 @@ async def _process_and_persist_events(
         msg = f"⚠️ I couldn't match '{names_str}' to your roster. Reply with their enrolled name, or type 'ignore'."
 
         if recognized_events:
-            msg = _format_event_summary(recognized_events) + "\n\n" + msg
+            msg = _format_event_summary(recognized_events, auto_approved_ids) + "\n\n" + msg
 
         if context_cleared_for:
             msg += f"\n\nℹ️ Cleared /child context — transcript named {context_cleared_for}."
@@ -258,7 +270,7 @@ async def _process_and_persist_events(
         return _build_twiml_response(msg)
 
     # 3. All valid
-    msg = _format_event_summary(recognized_events)
+    msg = _format_event_summary(recognized_events, auto_approved_ids)
     if context_cleared_for:
         msg += f"\n\nℹ️ Cleared /child context — transcript named {context_cleared_for}."
     return _build_twiml_response(msg)

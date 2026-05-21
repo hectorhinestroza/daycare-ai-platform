@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     # Empty in dev/test → token issuance refuses, verification returns None.
     auth_token_secret: str = ""
 
+    # Auto-approval threshold. Events with confidence_score >= this value and
+    # review_tier=="teacher" are approved immediately at persist time, bypassing
+    # the teacher review queue. Set to 0.0 to disable auto-approval entirely.
+    auto_approve_confidence_threshold: float = 0.80
+
     # Pilot kill switch — when True, voice memos skip transcription + GPT-4o
     # extraction. Audio is still deleted from Twilio (zero-retention). Teacher
     # gets a "pending review" reply. Flip via Railway env when something is

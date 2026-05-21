@@ -5,6 +5,7 @@ import { fromApi } from '../../utils/time';
 
 const ACTION_META = {
   APPROVE:       { icon: 'check_circle', chipClass: 'bg-secondary-fixed text-on-secondary-fixed-variant',  label: 'Approved' },
+  AUTO_APPROVE:  { icon: 'smart_toy',    chipClass: 'bg-primary-fixed text-on-primary-container',           label: 'Auto-Approved' },
   BATCH_APPROVE: { icon: 'done_all',     chipClass: 'bg-secondary-fixed text-on-secondary-fixed-variant',  label: 'Batch Approved' },
   REJECT:        { icon: 'cancel',       chipClass: 'bg-error-container text-on-error-container',           label: 'Rejected' },
   EDIT:          { icon: 'edit',         chipClass: 'bg-tertiary-fixed text-on-tertiary-fixed-variant',     label: 'Edited' },
@@ -21,6 +22,8 @@ function getActivityMessage(log) {
   switch (action) {
     case 'APPROVE':
       return <span>Approved <strong className="text-on-surface">{evt}</strong> for <strong className="text-on-surface">{child}</strong>.</span>;
+    case 'AUTO_APPROVE':
+      return <span>AI auto-approved <strong className="text-on-surface">{evt}</strong> for <strong className="text-on-surface">{child}</strong>.</span>;
     case 'REJECT':
       return <span>Rejected <strong className="text-on-surface">{evt}</strong> for <strong className="text-on-surface">{child}</strong>.</span>;
     case 'BATCH_APPROVE':

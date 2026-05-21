@@ -63,7 +63,21 @@ def create_event_from_base(
     teacher_id: Optional[uuid.UUID] = None,
     child_id: Optional[uuid.UUID] = None,
 ) -> Event:
-    """Create a DB event from a Pydantic BaseEvent (post-extraction)."""
+    """Create a DB event from a Pydantic BaseEvent (post-extraction).
+
+    If the event meets the auto-approve threshold (teacher tier + high confidence),
+    it is written as APPROVED immediately and logged with action AUTO_APPROVE.
+    """
+    from backend.config import get_settings
+    threshold = get_settings().auto_approve_confidence_threshold
+
+    auto_approved = (
+        threshold > 0
+        and base_event.review_tier == "teacher"
+        and base_event.confidence_score >= threshold
+    )
+
+    now = datetime.now(UTC)
     event = Event(
         id=base_event.id,
         center_id=uuid.UUID(base_event.center_id) if isinstance(base_event.center_id, str) else base_event.center_id,
@@ -78,13 +92,25 @@ def create_event_from_base(
         confidence_score=base_event.confidence_score,
         needs_director_review=base_event.needs_director_review,
         needs_review=base_event.needs_review,
-        status=base_event.status.value,
+        status="APPROVED" if auto_approved else base_event.status.value,
+        reviewed_at=now if auto_approved else None,
         applies_to_all=getattr(base_event, "applies_to_all", False),
         batch_id=getattr(base_event, "batch_id", None),
     )
     db.add(event)
     db.commit()
     db.refresh(event)
+
+    if auto_approved:
+        log_activity(
+            db,
+            event.center_id,
+            "AUTO_APPROVE",
+            event_id=event.id,
+            child_id=event.child_id,
+            details={"child_name": event.child_name, "event_type": event.event_type},
+        )
+
     return event
 
 
