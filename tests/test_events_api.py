@@ -236,6 +236,18 @@ def test_edit_event_details(db_session):
     assert resp.json()["event"]["details"] == "Ate spaghetti for lunch"
 
 
+def test_edit_event_type(db_session):
+    eid = _create_event(db_session)
+
+    client = TestClient(app)
+    resp = client.patch(
+        f"/api/events/{CENTER_ID}/{eid}",
+        json={"event_type": "nap"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["event"]["event_type"] == "nap"
+
+
 def test_edit_event_no_fields(db_session):
     eid = _create_event(db_session)
 

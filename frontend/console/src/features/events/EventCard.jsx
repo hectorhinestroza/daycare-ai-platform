@@ -22,6 +22,7 @@ export default function EventCard({ event, onAction, readOnly = false }) {
   const [editFields, setEditFields] = useState({
     child_name: event.child_name,
     details: event.details || '',
+    event_type: event.event_type,
   });
   const [loading, setLoading] = useState(false);
 
@@ -79,14 +80,30 @@ export default function EventCard({ event, onAction, readOnly = false }) {
           {/* Body */}
           {editing ? (
             <div className="flex flex-col gap-3 mt-3">
-              <div>
-                <label className="text-xs font-medium text-on-surface-variant mb-1 block">Child Name</label>
-                <input
-                  type="text"
-                  value={editFields.child_name}
-                  onChange={(e) => setEditFields({ ...editFields, child_name: e.target.value })}
-                  className="w-full bg-surface-container-highest rounded-DEFAULT px-4 py-2 text-sm text-on-surface outline-none focus:bg-surface-container-lowest border border-transparent focus:border-outline-variant/20 transition-colors"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-on-surface-variant mb-1 block">Child Name</label>
+                  <input
+                    type="text"
+                    value={editFields.child_name}
+                    onChange={(e) => setEditFields({ ...editFields, child_name: e.target.value })}
+                    className="w-full bg-surface-container-highest rounded-DEFAULT px-4 py-2 text-sm text-on-surface outline-none focus:bg-surface-container-lowest border border-transparent focus:border-outline-variant/20 transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-on-surface-variant mb-1 block">Action Type</label>
+                  <select
+                    value={editFields.event_type}
+                    onChange={(e) => setEditFields({ ...editFields, event_type: e.target.value })}
+                    className="w-full bg-surface-container-highest rounded-DEFAULT px-4 py-2 text-sm text-on-surface outline-none focus:bg-surface-container-lowest border border-transparent focus:border-outline-variant/20 transition-colors"
+                  >
+                    {Object.keys(EVENT_META).map((type) => (
+                      <option key={type} value={type}>
+                        {type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div>
                 <label className="text-xs font-medium text-on-surface-variant mb-1 block">Details</label>
@@ -145,7 +162,18 @@ export default function EventCard({ event, onAction, readOnly = false }) {
           </div>
         ) : (
           <div className="flex items-center gap-3 shrink-0">
-            <button className="btn-secondary" onClick={() => setEditing(true)} disabled={loading}>
+            <button
+              className="btn-secondary"
+              onClick={() => {
+                setEditFields({
+                  child_name: event.child_name,
+                  details: event.details || '',
+                  event_type: event.event_type,
+                });
+                setEditing(true);
+              }}
+              disabled={loading}
+            >
               Edit
             </button>
             <button
