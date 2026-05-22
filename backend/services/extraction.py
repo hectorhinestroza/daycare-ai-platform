@@ -41,6 +41,12 @@ CRITICAL RULES:
 - NEVER return an empty events array if the transcript describes activities.
 - You will be provided with a list of "Known Children in this room". If ANY child name mentioned in the transcript is NOT a perfect or obvious match for a known child on the roster, you MUST include that transcript name in the "unrecognized_names" array.
 - DO NOT hallucinate or guess unrecognized names into known names if they are completely different. Just extract the event with the said name, and flag it in unrecognized_names.
+- Teachers will send raw voice notes, because they will be doing it in the middle of the day while taking care of children, that means that extracted events and descriptions need to be cleaned up of any negative or unprofessional language and it needs to be as parent friendly as possible. Key words that need to be paraphrased are:
+  * "struggling", "struggle", "struggled", "hard time" -> "needed help with", "we recommend that you continue working on this at home", "needs to improve on", "working on"
+  * "had/throwing a tantrum/fit" -> "felt overwhelmed", "could use better guidance processing his/her emotions",
+  * "did not want to", "refused to" -> "was reluctant to", "needed redirection"
+  * "hit {child_name} with {object}" -> "had an incident involving another kid". Never mention other kids names but still include details about the other kid, for example "One of the kids was laying down outside and Penny ran outside and tripped over Wilder's face. Wilder got a bump on his nose" Will obscure Wilder's name but still give details about what happened to him
+  * "talked back to {teacher}" -> "spoke disrespectfully to teacher" or "did not respond to teacher's directions" (whatever is more accurate)
 
 BATCH / GROUP EVENTS:
 - If the teacher says "all kids", "everyone", "the whole class", "all children", or any clearly
@@ -168,7 +174,9 @@ async def extract_events(
         )
 
     safe_log(
-        logger, "info", "extraction.started",
+        logger,
+        "info",
+        "extraction.started",
         transcript_length=len(transcript),
         known_children_count=len(known_children) if known_children else 0,
     )
@@ -210,16 +218,25 @@ async def extract_events(
         else:
             # Don't log `parsed` — it contains child-named events.
             safe_log(
-                logger, "warning", "extraction.unexpected_response_shape",
+                logger,
+                "warning",
+                "extraction.unexpected_response_shape",
                 parsed_type=type(parsed).__name__,
             )
             raw_events = []
 
         response_shape = (
-            "object_with_events" if isinstance(parsed, dict) and "events" in parsed
-            else "list" if isinstance(parsed, list)
-            else "single_event" if isinstance(parsed, dict) and "event_type" in parsed
-            else "unknown"
+            "object_with_events"
+            if isinstance(parsed, dict) and "events" in parsed
+            else (
+                "list"
+                if isinstance(parsed, list)
+                else (
+                    "single_event"
+                    if isinstance(parsed, dict) and "event_type" in parsed
+                    else "unknown"
+                )
+            )
         )
 
         # Validate each event against Pydantic schema
@@ -238,7 +255,8 @@ async def extract_events(
 
                 # Resolve child_name: null when applies_to_all, else use transcript name
                 resolved_child_name = (
-                    None if applies_to_all
+                    None
+                    if applies_to_all
                     else raw_event.get("child_name") or child_name or "Unknown"
                 )
 
@@ -262,13 +280,17 @@ async def extract_events(
             except (ValidationError, KeyError, ValueError) as e:
                 # Don't log `raw_event` — it contains the child name and details.
                 safe_log(
-                    logger, "warning", "extraction.event_dropped",
+                    logger,
+                    "warning",
+                    "extraction.event_dropped",
                     error_type=type(e).__name__,
                 )
                 continue
 
         safe_log(
-            logger, "info", "extraction.completed",
+            logger,
+            "info",
+            "extraction.completed",
             duration_ms=int((time.monotonic() - start) * 1000),
             response_shape=response_shape,
             raw_event_count=len(raw_events),
@@ -281,7 +303,9 @@ async def extract_events(
         # JSONDecodeError messages can include a snippet of the offending JSON,
         # which contains child names — log type only, not the message.
         safe_log(
-            logger, "error", "extraction.invalid_json",
+            logger,
+            "error",
+            "extraction.invalid_json",
             duration_ms=int((time.monotonic() - start) * 1000),
         )
         raise ValueError("LLM returned invalid JSON") from None
@@ -290,7 +314,9 @@ async def extract_events(
         # before_send scrubber (frame vars are redacted). Avoid `{e}` in the
         # format string since OpenAI errors can echo prompt content.
         safe_log(
-            logger, "error", "extraction.failed",
+            logger,
+            "error",
+            "extraction.failed",
             duration_ms=int((time.monotonic() - start) * 1000),
             error_type=type(e).__name__,
         )
