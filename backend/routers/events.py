@@ -178,6 +178,7 @@ class EventOut(BaseModel):
     created_at: Optional[datetime] = None
     applies_to_all: bool = False
     batch_id: Optional[UUID] = None
+    teacher_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -243,9 +244,16 @@ def list_event_history(
     offset: int = 0,
     db: Session = Depends(get_db),
 ):
-    """Get approved/rejected events for the history view."""
+    """Get approved/rejected events for the history view, with teacher attribution."""
     events = get_events_history(db, center_id, status=status, limit=limit, offset=offset)
-    return events
+    return [
+        EventOut.model_validate({
+            **{c.key: getattr(e, c.key) for c in e.__table__.columns},
+            "applies_to_all": e.applies_to_all,
+            "teacher_name": e.teacher.name if e.teacher else None,
+        })
+        for e in events
+    ]
 
 
 @router.post(
