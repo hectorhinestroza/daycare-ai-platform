@@ -1,22 +1,27 @@
 import { useState, useEffect, useCallback } from 'react';
 import EventCard from './EventCard';
 import EmptyState from '../../components/ui/EmptyState';
-import { fetchHistory } from '../../api';
+import { fetchHistory, fetchTeachers } from '../../api';
 
 export default function DirectorHistoryView({ centerId }) {
   const [events, setEvents] = useState([]);
+  const [teachers, setTeachers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [groupBy, setGroupBy] = useState('child'); // 'child' | 'teacher'
   const [selectedFilter, setSelectedFilter] = useState(''); // '' = All
 
-  const loadEvents = useCallback(async () => {
+  const loadData = useCallback(async () => {
     if (!centerId) return;
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchHistory(centerId);
-      setEvents(data);
+      const [eventsData, teachersData] = await Promise.all([
+        fetchHistory(centerId),
+        fetchTeachers(centerId),
+      ]);
+      setEvents(eventsData);
+      setTeachers(teachersData);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -25,8 +30,8 @@ export default function DirectorHistoryView({ centerId }) {
   }, [centerId]);
 
   useEffect(() => {
-    loadEvents();
-  }, [loadEvents]);
+    loadData();
+  }, [loadData]);
 
   const grouped = events.reduce((acc, event) => {
     const key = groupBy === 'child'
@@ -37,7 +42,9 @@ export default function DirectorHistoryView({ centerId }) {
     return acc;
   }, {});
 
-  const filterOptions = Object.keys(grouped).sort();
+  const filterOptions = groupBy === 'teacher'
+    ? teachers.map((t) => t.name).sort()
+    : Object.keys(grouped).sort();
   const visibleGroups = selectedFilter
     ? Object.fromEntries(Object.entries(grouped).filter(([k]) => k === selectedFilter))
     : grouped;
@@ -123,6 +130,11 @@ export default function DirectorHistoryView({ centerId }) {
 
       {events.length === 0 ? (
         <EmptyState role="history" />
+      ) : Object.keys(visibleGroups).length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-24 gap-3 text-on-surface-variant">
+          <span className="material-symbols-outlined text-4xl">inbox</span>
+          <p className="text-sm font-medium">No events logged yet</p>
+        </div>
       ) : (
         <div className="space-y-10">
           {Object.entries(visibleGroups).map(([groupKey, groupEvents]) => (
