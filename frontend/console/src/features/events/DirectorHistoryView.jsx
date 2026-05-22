@@ -8,6 +8,7 @@ export default function DirectorHistoryView({ centerId }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [groupBy, setGroupBy] = useState('child'); // 'child' | 'teacher'
+  const [selectedFilter, setSelectedFilter] = useState(''); // '' = All
 
   const loadEvents = useCallback(async () => {
     if (!centerId) return;
@@ -35,6 +36,16 @@ export default function DirectorHistoryView({ centerId }) {
     acc[key].push(event);
     return acc;
   }, {});
+
+  const filterOptions = Object.keys(grouped).sort();
+  const visibleGroups = selectedFilter
+    ? Object.fromEntries(Object.entries(grouped).filter(([k]) => k === selectedFilter))
+    : grouped;
+
+  function handleGroupByChange(next) {
+    setGroupBy(next);
+    setSelectedFilter('');
+  }
 
   if (error) {
     return (
@@ -66,28 +77,46 @@ export default function DirectorHistoryView({ centerId }) {
             </p>
           </div>
 
-          {/* Group-by toggle */}
-          <div className="flex items-center gap-1 bg-surface-container rounded-full p-1 shrink-0">
-            <button
-              onClick={() => setGroupBy('child')}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200 ${
-                groupBy === 'child'
-                  ? 'bg-primary text-on-primary shadow-sm'
-                  : 'text-on-surface-variant hover:text-on-surface'
-              }`}
-            >
-              By Child
-            </button>
-            <button
-              onClick={() => setGroupBy('teacher')}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200 ${
-                groupBy === 'teacher'
-                  ? 'bg-primary text-on-primary shadow-sm'
-                  : 'text-on-surface-variant hover:text-on-surface'
-              }`}
-            >
-              By Teacher
-            </button>
+          <div className="flex items-center gap-3 shrink-0 flex-wrap">
+            {/* Group-by toggle */}
+            <div className="flex items-center gap-1 bg-surface-container rounded-full p-1">
+              <button
+                onClick={() => handleGroupByChange('child')}
+                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200 ${
+                  groupBy === 'child'
+                    ? 'bg-primary text-on-primary shadow-sm'
+                    : 'text-on-surface-variant hover:text-on-surface'
+                }`}
+              >
+                By Child
+              </button>
+              <button
+                onClick={() => handleGroupByChange('teacher')}
+                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200 ${
+                  groupBy === 'teacher'
+                    ? 'bg-primary text-on-primary shadow-sm'
+                    : 'text-on-surface-variant hover:text-on-surface'
+                }`}
+              >
+                By Teacher
+              </button>
+            </div>
+
+            {/* Filter dropdown */}
+            {filterOptions.length > 0 && (
+              <select
+                value={selectedFilter}
+                onChange={(e) => setSelectedFilter(e.target.value)}
+                className="bg-surface-container text-on-surface text-sm rounded-full px-4 py-2 border border-outline-variant/20 outline-none focus:border-outline-variant/50 transition-colors cursor-pointer"
+              >
+                <option value="">
+                  {groupBy === 'child' ? 'All Children' : 'All Teachers'}
+                </option>
+                {filterOptions.map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+            )}
           </div>
         </div>
       </section>
@@ -96,7 +125,7 @@ export default function DirectorHistoryView({ centerId }) {
         <EmptyState role="history" />
       ) : (
         <div className="space-y-10">
-          {Object.entries(grouped).map(([groupKey, groupEvents]) => (
+          {Object.entries(visibleGroups).map(([groupKey, groupEvents]) => (
             <section key={groupKey} className="space-y-4">
               {/* Group header */}
               <div className="flex items-center gap-4 px-2">
