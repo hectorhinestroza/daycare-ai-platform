@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import TeacherQueue from './portals/teacher/TeacherQueue';
 import DirectorDashboard from './portals/director/DirectorDashboard';
 import HistoryView from './features/events/HistoryView';
-import ActivityLog from './features/events/ActivityLog';
+import DirectorHistoryView from './features/events/DirectorHistoryView';
 import CenterView from './features/center/CenterView';
 import Toast from './components/ui/Toast';
 import { getCachedRole } from './api/client.js';
@@ -14,10 +14,9 @@ const TEACHER_NAV = [
 ];
 
 const DIRECTOR_NAV = [
-  { key: 'pending',  icon: 'auto_awesome', label: 'Queue' },
-  { key: 'history',  icon: 'history',      label: 'History' },
-  { key: 'center',   icon: 'apartment',    label: 'Center' },
-  { key: 'activity', icon: 'bar_chart',    label: 'Activity' },
+  { key: 'pending', icon: 'auto_awesome', label: 'Queue' },
+  { key: 'history', icon: 'history',      label: 'History' },
+  { key: 'center',  icon: 'apartment',    label: 'Center' },
 ];
 
 function App({ forcedRole, centerId: propscenterId }) {
@@ -34,7 +33,7 @@ function App({ forcedRole, centerId: propscenterId }) {
 
   // Enforce role-based view access
   useEffect(() => {
-    if (role === 'teacher' && (view === 'activity' || view === 'center')) {
+    if (role === 'teacher' && view === 'center') {
       setView('pending');
     }
   }, [role, view]);
@@ -84,8 +83,8 @@ function App({ forcedRole, centerId: propscenterId }) {
       {/* ── Main Content ── */}
       <main className="pt-24 pb-32 px-6 max-w-4xl mx-auto">
         {view === 'center' && role === 'director' && <CenterView centerId={centerId} addToast={addToast} />}
-        {view === 'activity' && role === 'director' && <ActivityLog centerId={centerId} />}
-        {view === 'history' && <HistoryView centerId={centerId} addToast={addToast} />}
+        {view === 'history' && role === 'director' && <DirectorHistoryView centerId={centerId} />}
+        {view === 'history' && role === 'teacher' && <HistoryView centerId={centerId} addToast={addToast} />}
         {view === 'pending' && role === 'director' && <DirectorDashboard centerId={centerId} addToast={addToast} />}
         {view === 'pending' && role === 'teacher' && <TeacherQueue centerId={centerId} addToast={addToast} />}
       </main>
