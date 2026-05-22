@@ -233,18 +233,20 @@ def get_event(db: Session, event_id: uuid.UUID, center_id: uuid.UUID) -> Optiona
     return db.query(Event).filter(Event.id == event_id, Event.center_id == center_id).first()
 
 
-def get_events_pending_teacher(db: Session, center_id: uuid.UUID) -> List[Event]:
-    """Get events awaiting teacher review."""
-    return (
-        db.query(Event)
-        .filter(
-            Event.center_id == center_id,
-            Event.status == "PENDING",
-            Event.review_tier == "teacher",
-        )
-        .order_by(Event.created_at.desc())
-        .all()
+def get_events_pending_teacher(
+    db: Session,
+    center_id: uuid.UUID,
+    teacher_id: Optional[uuid.UUID] = None,
+) -> List[Event]:
+    """Get events awaiting teacher review, optionally scoped to one teacher."""
+    q = db.query(Event).filter(
+        Event.center_id == center_id,
+        Event.status == "PENDING",
+        Event.review_tier == "teacher",
     )
+    if teacher_id:
+        q = q.filter(Event.teacher_id == teacher_id)
+    return q.order_by(Event.created_at.desc()).all()
 
 
 def get_events_pending_director(db: Session, center_id: uuid.UUID) -> List[Event]:
@@ -472,6 +474,7 @@ def get_events_history(
     db: Session,
     center_id: uuid.UUID,
     status: Optional[str] = None,
+    teacher_id: Optional[uuid.UUID] = None,
     limit: int = 50,
     offset: int = 0,
 ) -> List[Event]:
@@ -482,6 +485,8 @@ def get_events_history(
     )
     if status:
         q = q.filter(Event.status == status)
+    if teacher_id:
+        q = q.filter(Event.teacher_id == teacher_id)
     return q.order_by(Event.reviewed_at.desc()).limit(limit).offset(offset).all()
 
 

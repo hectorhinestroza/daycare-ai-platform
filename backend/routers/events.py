@@ -213,11 +213,15 @@ class BatchApproveResponse(BaseModel):
 @router.get(
     "/pending/teacher/{center_id}",
     response_model=List[EventOut],
-    dependencies=[Depends(require_role("staff"))],
 )
-def list_teacher_queue(center_id: UUID, db: Session = Depends(get_db)):
-    """Get all pending events for teacher review."""
-    events = get_events_pending_teacher(db, center_id)
+def list_teacher_queue(
+    center_id: UUID,
+    payload: TokenPayload = Depends(require_role("staff")),
+    db: Session = Depends(get_db),
+):
+    """Get pending events for teacher review, scoped to the authenticated teacher."""
+    teacher_id = payload.sub if payload.role == "teacher" else None
+    events = get_events_pending_teacher(db, center_id, teacher_id=teacher_id)
     return events
 
 
@@ -251,17 +255,18 @@ def _resolve_event_teacher_name(event: Event, db: Session) -> str | None:
 @router.get(
     "/history/{center_id}",
     response_model=List[EventOut],
-    dependencies=[Depends(require_role("staff"))],
 )
 def list_event_history(
     center_id: UUID,
     status: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
+    payload: TokenPayload = Depends(require_role("staff")),
     db: Session = Depends(get_db),
 ):
     """Get approved/rejected events for the history view, with teacher attribution."""
-    events = get_events_history(db, center_id, status=status, limit=limit, offset=offset)
+    teacher_id = payload.sub if payload.role == "teacher" else None
+    events = get_events_history(db, center_id, status=status, teacher_id=teacher_id, limit=limit, offset=offset)
     return [
         EventOut.model_validate({
             **{c.key: getattr(e, c.key) for c in e.__table__.columns},
