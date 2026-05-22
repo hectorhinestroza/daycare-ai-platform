@@ -5,7 +5,7 @@ import HistoryView from './features/events/HistoryView';
 import DirectorHistoryView from './features/events/DirectorHistoryView';
 import CenterView from './features/center/CenterView';
 import Toast from './components/ui/Toast';
-import { getCachedRole } from './api/client.js';
+import { getCachedRole, apiGet } from './api/client.js';
 
 // Bottom nav config per role
 const TEACHER_NAV = [
@@ -27,6 +27,26 @@ function App({ forcedRole, centerId: propscenterId }) {
   const [role] = useState(initialRole);
   const [view, setView] = useState('pending');
   const [toasts, setToasts] = useState([]);
+  const [profile, setProfile] = useState({ centerName: '', userName: '' });
+
+  useEffect(() => {
+    let active = true;
+    apiGet('/api/auth/whoami')
+      .then((data) => {
+        if (active) {
+          setProfile({
+            centerName: data.center_name || '',
+            userName: data.user_name || '',
+          });
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to fetch whoami profile:', err);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const params = new URLSearchParams(window.location.search);
   const centerId = propscenterId || params.get('center') || '';
@@ -54,8 +74,11 @@ function App({ forcedRole, centerId: propscenterId }) {
   }, []);
 
   const nav = role === 'director' ? DIRECTOR_NAV : TEACHER_NAV;
-  const headerTitle = role === 'director' ? 'Director Dashboard' : 'Teacher Console';
-  const headerSubtitle = role === 'director' ? null : '— Room 2';
+  const headerTitle = role === 'director'
+    ? `${profile.centerName || 'Center Name'} Director Dashboard`
+    : profile.userName
+      ? `${profile.userName} Teacher Console - ${profile.centerName || 'Center Name'}`
+      : `Teacher Console - ${profile.centerName || 'Center Name'}`;
 
   return (
     <div className="min-h-screen bg-surface">
@@ -72,9 +95,6 @@ function App({ forcedRole, centerId: propscenterId }) {
           <div>
             <h1 className="font-headline text-xl font-semibold tracking-tight text-primary leading-tight">
               {headerTitle}
-              {headerSubtitle && (
-                <span className="text-on-surface-variant font-normal ml-1 text-base">{headerSubtitle}</span>
-              )}
             </h1>
           </div>
         </div>

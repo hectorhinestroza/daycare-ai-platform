@@ -111,6 +111,8 @@ def test_whoami_returns_director_identity(client, db_and_seeds):
     assert body["sub"] == str(seeds["admin_id"])
     assert body["center_id"] == str(seeds["center_id"])
     assert body["child_ids"] == []
+    assert body["center_name"] == "Test Center"
+    assert body["user_name"] == "D"
 
 
 def test_whoami_returns_teacher_identity(client, db_and_seeds):
@@ -121,7 +123,10 @@ def test_whoami_returns_teacher_identity(client, db_and_seeds):
     )
     r = client.get("/api/auth/whoami", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 200
-    assert r.json()["role"] == "teacher"
+    body = r.json()
+    assert body["role"] == "teacher"
+    assert body["center_name"] == "Test Center"
+    assert body["user_name"] == "T"
 
 
 def test_whoami_parent_path_returns_child_ids(client, db_and_seeds):
@@ -135,6 +140,8 @@ def test_whoami_parent_path_returns_child_ids(client, db_and_seeds):
     body = r.json()
     assert body["role"] == "parent"
     assert body["child_ids"] == [str(seeds["child_id"])]
+    assert body["center_name"] == "Test Center"
+    assert body["user_name"] == "P"
 
 
 # ─── issue ────────────────────────────────────────────────────

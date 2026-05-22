@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from backend.config import get_settings
 from backend.storage.database import get_db
-from backend.storage.models import Admin, Child, ParentContact, Teacher
+from backend.storage.models import Admin, Center, Child, ParentContact, Teacher
 from backend.utils.auth_tokens import (
     DEFAULT_EXPIRY_DAYS,
     TokenPayload,
@@ -43,21 +43,58 @@ class WhoamiResponse(BaseModel):
     sub: UUID
     center_id: UUID
     child_ids: List[UUID] = Field(default_factory=list)
+    center_name: Optional[str] = None
+    user_name: Optional[str] = None
 
 
 @router.get("/auth/whoami", response_model=WhoamiResponse)
-async def whoami(payload: TokenPayload = Depends(require_role("staff"))):
+async def whoami(
+    payload: TokenPayload = Depends(require_role("staff")),
+    db: Session = Depends(get_db),
+):
     """Return identity for any valid token.
 
     Note: the dependency uses "staff" as the gate but staff matches both
     teacher AND director. We then short-circuit for parent tokens via
     a second resolver below — see the wrapper route.
     """
+    center = db.query(Center).filter(Center.id == payload.center_id).first()
+    center_name = center.name if center else "Center Name"
+
+    user_name = "User"
+    if payload.role == "teacher":
+        teacher = db.query(Teacher).filter(Teacher.id == payload.sub, Teacher.center_id == payload.center_id).first()
+        if teacher:
+            user_name = teacher.name
+        else:
+            first_teacher = db.query(Teacher).filter(Teacher.center_id == payload.center_id).first()
+            if first_teacher:
+                user_name = first_teacher.name
+            else:
+                user_name = "Teacher"
+    elif payload.role == "director":
+        admin = db.query(Admin).filter(Admin.id == payload.sub, Admin.center_id == payload.center_id).first()
+        if admin:
+            user_name = admin.name
+        else:
+            first_admin = db.query(Admin).filter(Admin.center_id == payload.center_id).first()
+            if first_admin:
+                user_name = first_admin.name
+            else:
+                user_name = "Dev Director"
+
+    if center_name == "Center Name":
+        first_center = db.query(Center).first()
+        if first_center:
+            center_name = first_center.name
+
     return WhoamiResponse(
         role=payload.role,
         sub=payload.sub,
         center_id=payload.center_id,
         child_ids=list(payload.child_ids),
+        center_name=center_name,
+        user_name=user_name,
     )
 
 
@@ -66,12 +103,28 @@ async def whoami(payload: TokenPayload = Depends(require_role("staff"))):
 
 
 @router.get("/auth/whoami/parent", response_model=WhoamiResponse)
-async def whoami_parent(payload: TokenPayload = Depends(require_role("parent"))):
+async def whoami_parent(
+    payload: TokenPayload = Depends(require_role("parent")),
+    db: Session = Depends(get_db),
+):
+    center = db.query(Center).filter(Center.id == payload.center_id).first()
+    center_name = center.name if center else "Center Name"
+
+    parent = db.query(ParentContact).filter(ParentContact.id == payload.sub, ParentContact.center_id == payload.center_id).first()
+    user_name = parent.name if parent else "Parent"
+
+    if center_name == "Center Name":
+        first_center = db.query(Center).first()
+        if first_center:
+            center_name = first_center.name
+
     return WhoamiResponse(
         role=payload.role,
         sub=payload.sub,
         center_id=payload.center_id,
         child_ids=list(payload.child_ids),
+        center_name=center_name,
+        user_name=user_name,
     )
 
 
