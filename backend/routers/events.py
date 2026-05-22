@@ -38,7 +38,7 @@ from backend.storage.events_handlers import (
     reject_event,
     update_event,
 )
-from backend.storage.models import Center as CenterModel, Event
+from backend.storage.models import Admin, Center as CenterModel, Event
 from backend.storage.narrative_handlers import get_narrative, upsert_narrative
 
 logger = logging.getLogger(__name__)
@@ -232,6 +232,22 @@ def list_director_queue(center_id: UUID, db: Session = Depends(get_db)):
     return events
 
 
+def _resolve_event_teacher_name(event: Event, db: Session) -> str | None:
+    """Resolve the name of whoever submitted this event.
+
+    Teacher submissions: teacher_id is set → event.teacher.name.
+    Director submissions: teacher_id is None, reviewed_by holds the Admin ID
+      (set in create_event_from_base when actor_type=="director").
+    """
+    if event.teacher:
+        return event.teacher.name
+    if event.reviewed_by:
+        admin = db.query(Admin).filter(Admin.id == event.reviewed_by).first()
+        if admin:
+            return admin.name
+    return None
+
+
 @router.get(
     "/history/{center_id}",
     response_model=List[EventOut],
@@ -249,8 +265,7 @@ def list_event_history(
     return [
         EventOut.model_validate({
             **{c.key: getattr(e, c.key) for c in e.__table__.columns},
-            "applies_to_all": e.applies_to_all,
-            "teacher_name": e.teacher.name if e.teacher else None,
+            "teacher_name": _resolve_event_teacher_name(e, db),
         })
         for e in events
     ]
