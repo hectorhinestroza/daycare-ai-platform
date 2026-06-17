@@ -49,6 +49,11 @@ router = APIRouter(prefix="/webhook", tags=["whatsapp"])
 # Key: phone number, Value: dict
 _command_context: Dict[str, dict] = {}
 
+# WhatsApp gallery uploads arrive as separate Twilio webhooks, one per
+# photo. After we prompt the teacher about pending photos, suppress further
+# prompts for this window so a 5-photo batch only triggers one bot reply.
+PENDING_PROMPT_DEBOUNCE_S = 300
+
 
 def _phone_hash(phone: str) -> str:
     """Short stable hash of a phone number for log correlation (no PII)."""
@@ -322,14 +327,18 @@ def _collect_media(num_media: int, urls: list, content_types: list) -> list:
 
 
 def _resolve_room_roster(db: Session, sender, is_director: bool) -> list:
-    """Return active children scoped to the sender's room(s) for fan-out.
+    """Return enrolled children scoped to the sender's room(s) for fan-out.
 
     Teacher: union of all rooms they're assigned to (M2M).
-    Director: all active children in the center.
+    Director: all enrolled children in the center.
+
+    UNENROLLED kids are excluded; everything else (ACTIVE, ENROLLED,
+    PENDING_CONSENT, WAITLIST) is in scope so the pilot — where kids stay
+    in PENDING_CONSENT while CONSENT_GATE_DISABLED=true — still works.
     """
     q = db.query(Child).filter(
         Child.center_id == sender.center_id,
-        Child.status == "ACTIVE",
+        Child.status != "UNENROLLED",
     )
     if is_director:
         return q.all()
@@ -404,6 +413,7 @@ async def _try_photo_context_followup(
     message: str,
     known_names: list,
     center_id_str: str,
+    phone: Optional[str] = None,
 ) -> Optional[Response]:
     """Treat `message` (transcript or text body) as the photo-context reply
     for outstanding pending photos. Returns a TwiML Response if the message
@@ -419,6 +429,12 @@ async def _try_photo_context_followup(
 
     if ctx.applies_to_all:
         children = _resolve_room_roster(db, sender, is_director)
+        if not children:
+            return _build_twiml_response(
+                "⚠️ Couldn't find any enrolled children in your classroom. "
+                "Ask your director to confirm your room assignment, or reply "
+                "with specific names instead of 'everyone'."
+            )
         label = "everyone"
     else:
         children, unrecognized = [], []
@@ -446,6 +462,9 @@ async def _try_photo_context_followup(
         db, sender, pending_photos, consenting, label,
         fallback_caption=message.strip() or None,
     )
+    # Pending batch is drained — next photo upload starts a fresh prompt cycle.
+    if phone:
+        _command_context.get(phone, {}).pop("pending_prompt_at", None)
     return _build_twiml_response(reply)
 
 
@@ -724,6 +743,7 @@ async def whatsapp_webhook(
                 message=transcript,
                 known_names=known_names,
                 center_id_str=center_id,
+                phone=phone,
             )
             if photo_reply is not None:
                 return photo_reply
@@ -777,6 +797,7 @@ async def whatsapp_webhook(
                 message=body,
                 known_names=known_names,
                 center_id_str=center_id,
+                phone=phone,
             )
             if photo_reply is not None:
                 return photo_reply
@@ -919,6 +940,14 @@ async def whatsapp_webhook(
                     expires_at=expires_at,
                 )
 
+            # Debounce: a WhatsApp gallery upload of N photos becomes N
+            # webhooks. We already prompted the teacher on the first one —
+            # subsequent ones in the same batch should be silent.
+            now = datetime.now(UTC)
+            last_prompt_at = cmd_context.get("pending_prompt_at")
+            if last_prompt_at and (now - last_prompt_at).total_seconds() < PENDING_PROMPT_DEBOUNCE_S:
+                return _build_empty_twiml()
+
             total_pending = len(get_pending_photos_by_teacher(db, sender.id))
             prompt = (
                 f"📷 Got {len(clean_photos)} photo(s)"
@@ -930,6 +959,7 @@ async def whatsapp_webhook(
             )
             if caption and not unmatched_caption_names:
                 prompt += f"\n(Your caption \"{caption}\" didn't name a child.)"
+            _set_command_context(phone, pending_prompt_at=now)
             return _build_twiml_response(prompt)
 
         except Exception as e:

@@ -301,6 +301,48 @@ class TestMultiMediaWebhook:
     @patch("backend.routers.whatsapp.strip_exif")
     @patch("backend.routers.whatsapp.delete_twilio_media_with_retry", new_callable=AsyncMock)
     @patch("backend.routers.whatsapp.download_twilio_media", new_callable=AsyncMock)
+    def test_consecutive_bare_photos_only_prompt_once(
+        self, mock_download, mock_delete_twilio, mock_strip, mock_upload, setup_db
+    ):
+        """A WhatsApp gallery batch arrives as N separate webhooks. The first
+        should prompt the teacher; the rest should be silent (empty TwiML)
+        so the teacher isn't spammed with N copies of the same prompt.
+        """
+        db = setup_db
+        mock_download.return_value = (b"raw", "image/jpeg")
+        mock_strip.return_value = b"clean"
+
+        def post_one(idx, sid):
+            return client.post(
+                "/webhook/whatsapp",
+                data={
+                    "From": "+15550001111",
+                    "Body": "",
+                    "NumMedia": "1",
+                    "MediaUrl0": f"https://api.twilio.com/p{idx}.jpg",
+                    "MediaContentType0": "image/jpeg",
+                    "MessageSid": sid,
+                },
+            )
+
+        first = post_one(0, "SM1")
+        second = post_one(1, "SM2")
+        third = post_one(2, "SM3")
+
+        assert "Got 1 photo" in first.text
+        # 2nd + 3rd photos: bot stays silent — empty TwiML <Response/>
+        for r in (second, third):
+            assert r.status_code == 200
+            assert "Got" not in r.text
+            assert r.text.strip().endswith("<Response/>")
+
+        # All 3 photos are queued; one prompt sent.
+        assert db.query(PendingPhoto).count() == 3
+
+    @patch("backend.routers.whatsapp.upload_photo")
+    @patch("backend.routers.whatsapp.strip_exif")
+    @patch("backend.routers.whatsapp.delete_twilio_media_with_retry", new_callable=AsyncMock)
+    @patch("backend.routers.whatsapp.download_twilio_media", new_callable=AsyncMock)
     def test_two_photos_no_caption_park_as_pending(
         self,
         mock_download,
@@ -492,6 +534,62 @@ class TestFollowupReply:
         photos = db.query(Photo).all()
         assert len(photos) == 1
         assert photos[0].caption == description
+
+    @patch("backend.routers.whatsapp.resolve_photo_context", new_callable=AsyncMock)
+    @patch("backend.routers.whatsapp.get_child_for_processing")
+    @patch("backend.routers.whatsapp.delete_s3_object")
+    @patch("backend.routers.whatsapp.upload_photo")
+    @patch("backend.routers.whatsapp.download_from_s3")
+    def test_everyone_works_for_pending_consent_kids_in_pilot(
+        self,
+        mock_download_s3,
+        mock_upload,
+        mock_delete_s3,
+        mock_consent,
+        mock_resolver,
+        setup_db,
+    ):
+        """Phase 1 pilot: children typically sit in PENDING_CONSENT until the
+        parent flow is enabled. 'everyone' should still fan out to them — we
+        only exclude UNENROLLED.
+        """
+        db = setup_db
+        center = db.query(Center).first()
+        teacher = db.query(Teacher).first()
+
+        # Force every child into PENDING_CONSENT (the realistic pilot state).
+        for c in db.query(Child).all():
+            c.status = "PENDING_CONSENT"
+        db.commit()
+
+        db.add(
+            PendingPhoto(
+                id=uuid.uuid4(),
+                center_id=center.id,
+                teacher_id=teacher.id,
+                s3_temp_key="pending/x.jpg",
+                content_type="image/jpeg",
+                expires_at=datetime.now(UTC) + timedelta(minutes=30),
+            )
+        )
+        db.commit()
+
+        mock_download_s3.return_value = b"clean"
+        mock_consent.return_value = MagicMock()
+        mock_resolver.return_value = _ctx(applies_to_all=True)
+
+        resp = client.post(
+            "/webhook/whatsapp",
+            data={
+                "From": "+15550001111",
+                "Body": "everyone is playing cards",
+                "NumMedia": "0",
+            },
+        )
+        assert resp.status_code == 200
+        assert "Saved 1 photo(s) for everyone" in resp.text
+        # 3 kids in the room → 3 Photo rows
+        assert db.query(Photo).count() == 3
 
     @patch("backend.routers.whatsapp.extract_events", new_callable=AsyncMock)
     @patch("backend.routers.whatsapp.resolve_photo_context", new_callable=AsyncMock)
