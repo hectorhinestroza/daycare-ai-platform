@@ -285,6 +285,7 @@ def approve_event(
         child = get_child_by_name(db, center_id, event.child_name)
         if child:
             event.child_id = child.id
+            event.child_name = child.name
 
     db.commit()
     db.refresh(event)

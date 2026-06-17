@@ -236,6 +236,7 @@ async def _process_and_persist_events(
         else:
             child = get_child_by_name(db, sender.center_id, base_event.child_name)
             if child is not None:
+                base_event.child_name = child.name
                 # Consent gate: in production, blocks events for children without
                 # active parental consent and queues them in pending_consent_queue.
                 gated = get_child_for_processing(
@@ -634,11 +635,12 @@ async def whatsapp_webhook(
                 new_name = body.strip()
                 child = get_child_by_name(db, sender.center_id, new_name)
                 child_id = child.id if child else None
+                normalized_name = child.name if child else new_name
 
                 events_created = 0
                 for fb in pending_pendings:
                     raw_event = fb.pending_event_data
-                    raw_event["child_name"] = new_name
+                    raw_event["child_name"] = normalized_name
                     raw_event["id"] = str(uuid.uuid4())
 
                     try:

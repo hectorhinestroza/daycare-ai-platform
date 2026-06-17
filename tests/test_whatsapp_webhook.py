@@ -14,7 +14,7 @@ from sqlalchemy.pool import StaticPool
 
 from backend.main import app
 from backend.storage.database import Base, get_db
-from backend.storage.models import Center, Event, Teacher, Admin, Room, Child
+from backend.storage.models import Center, Event, Teacher, Admin, Room, Child, PendingEvent
 from schemas.events import BaseEvent, EventStatus, EventType
 
 # In-memory DB for router testing
@@ -179,6 +179,107 @@ class TestVoicePipeline:
         saved_events = db.query(Event).all()
         assert len(saved_events) == 1
         assert saved_events[0].event_type == "potty"
+
+    @patch("backend.routers.whatsapp.extract_events", new_callable=AsyncMock)
+    def test_voice_memo_child_name_normalization(self, mock_extract, setup_db):
+        db = setup_db
+        center = db.query(Center).first()
+        teacher = db.query(Teacher).first()
+
+        # Seed a child
+        child = Child(id=uuid.uuid4(), center_id=center.id, name="Carl", status="ACTIVE")
+        db.add(child)
+        db.commit()
+
+        mock_extract.return_value = (
+            [
+                BaseEvent(
+                    id=uuid.uuid4(),
+                    center_id=str(center.id),
+                    child_name="Carl played with friends and ate soup today",
+                    event_type=EventType.FOOD,
+                    confidence_score=0.95,
+                    review_tier="teacher",
+                    needs_director_review=False,
+                    needs_review=False,
+                    status=EventStatus.PENDING,
+                    raw_transcript="Carl played with friends and ate soup today",
+                )
+            ],
+            [],
+        )
+
+        response = client.post(
+            "/webhook/whatsapp",
+            data={
+                "From": "+1234567890",
+                "Body": "Carl played with friends and ate soup today",
+                "NumMedia": "0",
+            },
+        )
+        assert response.status_code == 200
+        assert "Logged 1 event" in response.text
+
+        # Verify DB save has the normalized name
+        saved_events = db.query(Event).all()
+        assert len(saved_events) == 1
+        assert saved_events[0].child_name == "Carl"
+        assert saved_events[0].child_id == child.id
+        assert saved_events[0].teacher_id == teacher.id
+
+    def test_pending_event_child_name_normalization(self, setup_db):
+        db = setup_db
+        center = db.query(Center).first()
+        teacher = db.query(Teacher).first()
+
+        # Seed a child
+        child = Child(id=uuid.uuid4(), center_id=center.id, name="Carl", status="ACTIVE")
+        db.add(child)
+
+        # Seed a pending event
+        pending_event = PendingEvent(
+            id=uuid.uuid4(),
+            center_id=center.id,
+            teacher_phone=teacher.phone,
+            unrecognized_name="Carl played with friends and ate soup today",
+            original_transcript="Carl played with friends and ate soup today",
+            pending_event_data={
+                "id": str(uuid.uuid4()),
+                "center_id": str(center.id),
+                "child_name": "Carl played with friends and ate soup today",
+                "event_type": "food",
+                "confidence_score": 0.70,
+                "review_tier": "teacher",
+                "needs_director_review": False,
+                "needs_review": False,
+                "status": "PENDING",
+                "raw_transcript": "Carl played with friends and ate soup today",
+            }
+        )
+        db.add(pending_event)
+        db.commit()
+
+        # Teacher replies with the name "Carl" (or a phrase resolving to "Carl")
+        response = client.post(
+            "/webhook/whatsapp",
+            data={
+                "From": teacher.phone,
+                "Body": "Carl",
+                "NumMedia": "0",
+            },
+        )
+        assert response.status_code == 200
+        assert "Got it" in response.text
+
+        # Verify DB save has the normalized name
+        saved_events = db.query(Event).all()
+        assert len(saved_events) == 1
+        assert saved_events[0].child_name == "Carl"
+        assert saved_events[0].child_id == child.id
+        assert saved_events[0].teacher_id == teacher.id
+
+        # Verify PendingEvent is cleared
+        assert db.query(PendingEvent).count() == 0
 
 
 class TestKillSwitch:

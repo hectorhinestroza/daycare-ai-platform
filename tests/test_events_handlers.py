@@ -120,6 +120,29 @@ class TestEventCRUD:
         assert approved.status == "APPROVED"
         assert approved.reviewed_at is not None
 
+    def test_approve_event_normalizes_child_name(self, db, center_a):
+        # Seed the child Carl
+        child = Child(id=uuid.uuid4(), center_id=center_a.id, name="Carl", status="ACTIVE")
+        db.add(child)
+        db.commit()
+
+        # Create event with un-normalized name
+        event = create_event(
+            db=db,
+            center_id=center_a.id,
+            child_name="Carl played with friends and ate soup today",
+            event_type="food",
+            raw_transcript="Carl played with friends and ate soup today",
+        )
+        assert event.child_id is None
+        assert event.child_name == "Carl played with friends and ate soup today"
+
+        # Approve event (which resolves and normalizes)
+        approved = approve_event(db, event.id, center_a.id)
+        assert approved.status == "APPROVED"
+        assert approved.child_id == child.id
+        assert approved.child_name == "Carl"
+
     def test_reject_event(self, db, center_a):
         event = create_event(
             db=db,
