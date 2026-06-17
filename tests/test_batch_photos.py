@@ -24,8 +24,13 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from backend.main import app
+from backend.routers import whatsapp as whatsapp_router
 from backend.routers.whatsapp import _command_context
 from backend.services.photo_context import PhotoContext
+
+# TestClient serializes requests, so the coalesce sleep can't help us
+# (sibling webhooks won't actually run during it). Disable to keep tests fast.
+whatsapp_router.PHOTO_BATCH_COALESCE_S = 0
 from backend.storage.database import Base, get_db
 from backend.storage.models import (
     Center,
