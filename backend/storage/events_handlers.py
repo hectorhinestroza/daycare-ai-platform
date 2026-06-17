@@ -608,6 +608,40 @@ def create_photo(
     return photo
 
 
+def fan_out_photo(
+    db: Session,
+    center_id: uuid.UUID,
+    child_ids: List[uuid.UUID],
+    s3_key: str,
+    caption: Optional[str] = None,
+    content_type: str = "image/jpeg",
+    event_id: Optional[uuid.UUID] = None,
+) -> List[Photo]:
+    """Create one Photo row per child, all pointing at the same S3 object.
+
+    Used when a teacher tags multiple children in a single photo. The S3
+    object is uploaded once; we duplicate only the cheap row metadata so
+    each child's gallery query (`get_photos_for_child`) keeps working
+    unchanged.
+    """
+    created: List[Photo] = []
+    for child_id in child_ids:
+        photo = Photo(
+            center_id=center_id,
+            child_id=child_id,
+            s3_key=s3_key,
+            caption=caption,
+            content_type=content_type,
+            event_id=event_id,
+        )
+        db.add(photo)
+        created.append(photo)
+    db.commit()
+    for p in created:
+        db.refresh(p)
+    return created
+
+
 def get_photos_for_child(
     db: Session,
     center_id: uuid.UUID,
