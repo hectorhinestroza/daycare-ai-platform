@@ -228,6 +228,8 @@ async def _process_and_persist_events(
             )
             batch_fan_out_count += len(created)
             auto_approved_ids.update(str(e.id) for e in created if e.status == "APPROVED")
+            if created and any(e.status == "APPROVED" for e in created):
+                auto_approved_ids.add(str(base_event.id))
             logger.info(
                 f"Batch fan-out: {len(created)} events created for {sender_role} {sender.id}"
             )

@@ -58,7 +58,7 @@ function formatTime(dateStr) {
 }
 
 function formatDate(dateStr) {
-  const d = fromApi(dateStr);
+  const d = typeof dateStr === 'string' ? fromApi(dateStr) : dateStr;
   if (!d) return '';
   const today = new Date();
   const yesterday = new Date(today);
@@ -69,19 +69,39 @@ function formatDate(dateStr) {
   return d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
 }
 
-function groupByDate(events) {
+function groupByDate(events, photos) {
   const groups = {};
+
   for (const event of events) {
     const d = fromApi(event.event_time || event.created_at);
+    if (!d) continue;
     const dateKey = d.toDateString();
-    if (!groups[dateKey]) groups[dateKey] = [];
-    groups[dateKey].push(event);
+    if (!groups[dateKey]) {
+      groups[dateKey] = { date: dateKey, dateObj: d, events: [], photos: [] };
+    }
+    groups[dateKey].events.push(event);
   }
-  return Object.entries(groups).map(([dateKey, events]) => ({
-    date: dateKey,
-    label: formatDate(events[0].event_time || events[0].created_at),
-    events,
-  }));
+
+  for (const photo of (photos || [])) {
+    const d = fromApi(photo.created_at);
+    if (!d) continue;
+    const dateKey = d.toDateString();
+    if (!groups[dateKey]) {
+      groups[dateKey] = { date: dateKey, dateObj: d, events: [], photos: [] };
+    }
+    if (!groups[dateKey].photos.some((p) => p.id === photo.id)) {
+      groups[dateKey].photos.push(photo);
+    }
+  }
+
+  return Object.values(groups)
+    .sort((a, b) => b.dateObj - a.dateObj)
+    .map((group) => ({
+      date: group.date,
+      label: formatDate(group.dateObj),
+      events: group.events,
+      photos: group.photos,
+    }));
 }
 
 export default function ParentPortal({ centerId, childId }) {
@@ -141,7 +161,7 @@ export default function ParentPortal({ centerId, childId }) {
     );
   }
 
-  const dayGroups = groupByDate(events);
+  const dayGroups = groupByDate(events, photos);
 
   return (
     <div className="min-h-screen bg-surface">
@@ -189,6 +209,7 @@ export default function ParentPortal({ centerId, childId }) {
             {(() => {
               const todayGroup = dayGroups.find((g) => g.label === 'Today');
               const hasTodayEvents = todayGroup && todayGroup.events.length > 0;
+              const hasTodayPhotos = todayGroup && todayGroup.photos.length > 0;
 
               // State 1: Narrative exists (scheduler ran or director triggered) → show it, hide digest
               if (narrative) return <EODNarrativeCard narrative={narrative} />;
@@ -196,8 +217,8 @@ export default function ParentPortal({ centerId, childId }) {
               // State 2: Events flowing in but no narrative yet → show live digest
               if (hasTodayEvents) return <DailySummary events={todayGroup.events} childName={child?.name} />;
 
-              // State 3: No events today on a weekday → absent / not recorded message
-              if (isWeekday()) return <AbsentMessage childName={child?.name} />;
+              // State 3: No events today on a weekday, AND no photos today either -> absent / not recorded message
+              if (isWeekday() && !hasTodayPhotos) return <AbsentMessage childName={child?.name} />;
 
               // Weekend with no events — show nothing
               return null;
@@ -209,14 +230,16 @@ export default function ParentPortal({ centerId, childId }) {
                 {/* Date header */}
                 <div className="flex items-center gap-3 mb-4 mt-2">
                   <h2 className="font-headline text-lg text-on-surface">{group.label}</h2>
-                  <span className="text-xs text-on-surface-variant bg-surface-container px-2.5 py-0.5 rounded-full">
-                    {group.events.length} {group.events.length === 1 ? 'update' : 'updates'}
-                  </span>
+                  {group.events.length > 0 && (
+                    <span className="text-xs text-on-surface-variant bg-surface-container px-2.5 py-0.5 rounded-full">
+                      {group.events.length} {group.events.length === 1 ? 'update' : 'updates'}
+                    </span>
+                  )}
                 </div>
 
                 {/* Captured Moments — photos for this day */}
                 <PhotoGallery
-                  photos={photos}
+                  photos={group.photos}
                   targetDate={group.date}
                   narrative={group.label === 'Today' ? narrative : null}
                 />

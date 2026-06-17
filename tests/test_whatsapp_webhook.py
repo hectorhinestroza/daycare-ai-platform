@@ -132,7 +132,7 @@ class TestVoicePipeline:
             },
         )
         assert response.status_code == 200
-        assert "Parsed 1 event" in response.text
+        assert "Logged 1 event" in response.text
         assert "Jason" in response.text
 
         # Verify it was saved to the DB
@@ -173,7 +173,7 @@ class TestVoicePipeline:
             },
         )
         assert response.status_code == 200
-        assert "Parsed 1 event" in response.text
+        assert "Logged 1 event" in response.text
 
         # Verify DB save
         saved_events = db.query(Event).all()
@@ -294,7 +294,10 @@ class TestDirectorWebhook:
         assert log.actor_id == admin.id
         assert log.actor_type == "director"
 
-    def test_director_photo_without_context_blocked(self, setup_db):
+    @patch("backend.routers.whatsapp.upload_photo")
+    @patch("backend.routers.whatsapp.strip_exif")
+    @patch("backend.routers.whatsapp.download_twilio_media", new_callable=AsyncMock)
+    def test_director_photo_without_context_blocked(self, mock_download, mock_strip, mock_upload, setup_db):
         db = setup_db
         center = db.query(Center).first()
 
@@ -309,6 +312,9 @@ class TestDirectorWebhook:
         db.add(admin)
         db.commit()
 
+        mock_download.return_value = (b"fake_photo_bytes", "image/jpeg")
+        mock_strip.return_value = b"clean_bytes"
+
         response = client.post(
             "/webhook/whatsapp",
             data={
@@ -320,7 +326,7 @@ class TestDirectorWebhook:
             },
         )
         assert response.status_code == 200
-        assert "please set a child context first" in response.text
+        assert "As a director, please add a caption" in response.text
 
         # Verify no pending photo was created
         from backend.storage.models import PendingPhoto
