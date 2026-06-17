@@ -324,14 +324,18 @@ def _collect_media(num_media: int, urls: list, content_types: list) -> list:
 
 
 def _resolve_room_roster(db: Session, sender, is_director: bool) -> list:
-    """Return active children scoped to the sender's room(s) for fan-out.
+    """Return enrolled children scoped to the sender's room(s) for fan-out.
 
     Teacher: union of all rooms they're assigned to (M2M).
-    Director: all active children in the center.
+    Director: all enrolled children in the center.
+
+    UNENROLLED kids are excluded; everything else (ACTIVE, ENROLLED,
+    PENDING_CONSENT, WAITLIST) is in scope so the pilot — where kids stay
+    in PENDING_CONSENT while CONSENT_GATE_DISABLED=true — still works.
     """
     q = db.query(Child).filter(
         Child.center_id == sender.center_id,
-        Child.status == "ACTIVE",
+        Child.status != "UNENROLLED",
     )
     if is_director:
         return q.all()
@@ -422,6 +426,12 @@ async def _try_photo_context_followup(
 
     if ctx.applies_to_all:
         children = _resolve_room_roster(db, sender, is_director)
+        if not children:
+            return _build_twiml_response(
+                "⚠️ Couldn't find any enrolled children in your classroom. "
+                "Ask your director to confirm your room assignment, or reply "
+                "with specific names instead of 'everyone'."
+            )
         label = "everyone"
     else:
         children, unrecognized = [], []

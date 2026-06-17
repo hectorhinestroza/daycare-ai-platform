@@ -535,6 +535,62 @@ class TestFollowupReply:
         assert len(photos) == 1
         assert photos[0].caption == description
 
+    @patch("backend.routers.whatsapp.resolve_photo_context", new_callable=AsyncMock)
+    @patch("backend.routers.whatsapp.get_child_for_processing")
+    @patch("backend.routers.whatsapp.delete_s3_object")
+    @patch("backend.routers.whatsapp.upload_photo")
+    @patch("backend.routers.whatsapp.download_from_s3")
+    def test_everyone_works_for_pending_consent_kids_in_pilot(
+        self,
+        mock_download_s3,
+        mock_upload,
+        mock_delete_s3,
+        mock_consent,
+        mock_resolver,
+        setup_db,
+    ):
+        """Phase 1 pilot: children typically sit in PENDING_CONSENT until the
+        parent flow is enabled. 'everyone' should still fan out to them — we
+        only exclude UNENROLLED.
+        """
+        db = setup_db
+        center = db.query(Center).first()
+        teacher = db.query(Teacher).first()
+
+        # Force every child into PENDING_CONSENT (the realistic pilot state).
+        for c in db.query(Child).all():
+            c.status = "PENDING_CONSENT"
+        db.commit()
+
+        db.add(
+            PendingPhoto(
+                id=uuid.uuid4(),
+                center_id=center.id,
+                teacher_id=teacher.id,
+                s3_temp_key="pending/x.jpg",
+                content_type="image/jpeg",
+                expires_at=datetime.now(UTC) + timedelta(minutes=30),
+            )
+        )
+        db.commit()
+
+        mock_download_s3.return_value = b"clean"
+        mock_consent.return_value = MagicMock()
+        mock_resolver.return_value = _ctx(applies_to_all=True)
+
+        resp = client.post(
+            "/webhook/whatsapp",
+            data={
+                "From": "+15550001111",
+                "Body": "everyone is playing cards",
+                "NumMedia": "0",
+            },
+        )
+        assert resp.status_code == 200
+        assert "Saved 1 photo(s) for everyone" in resp.text
+        # 3 kids in the room → 3 Photo rows
+        assert db.query(Photo).count() == 3
+
     @patch("backend.routers.whatsapp.extract_events", new_callable=AsyncMock)
     @patch("backend.routers.whatsapp.resolve_photo_context", new_callable=AsyncMock)
     def test_event_narrative_falls_through_to_extraction(
