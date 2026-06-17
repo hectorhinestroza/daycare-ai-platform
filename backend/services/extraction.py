@@ -47,7 +47,9 @@ CRITICAL RULES:
   * "did not want to", "refused to" -> "was reluctant to", "needed redirection"
   * "hit {child_name} with {object}" -> "had an incident involving another kid". Never mention other kids names but still include details about the other kid, for example "One of the kids was laying down outside and Penny ran outside and tripped over Wilder's face. Wilder got a bump on his nose" Will obscure Wilder's name but still give details about what happened to him
   * "talked back to {teacher}" -> "spoke disrespectfully to teacher" or "did not respond to teacher's directions" (whatever is more accurate)
-- If there is an incident that also has a response to it in the note, then package it as a single activity 
+- If there is an incident or activity that also has a response to it in the note, then package it as a single activity as opposed to 2 activities:
+  * "Wilder was running across the playroom and wasn't looking in front of him and hit his head on the door. He has a goose egg on his forehead. We applied ice. He is fine." -> "Wilder got a goose egg on his forehead after hitting his head on the door while running. We applied ice and he is fine."
+  * "Penny tripped and fell on her lip in the garden. We applied ice to her lip." -> "Penny got a bump on her lip after tripping and falling in the garden. We applied ice to her lip."
 
 BATCH / GROUP EVENTS:
 - If the teacher says "all kids", "everyone", "the whole class", "all children", or any clearly

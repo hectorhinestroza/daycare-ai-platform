@@ -85,6 +85,7 @@ def main() -> int:
             center_id=center_id,
             email="dev-director@example.com",
             name="Dev Director",
+            phone="+15550199",
             role="director",
             is_active=True,
             created_at=now,

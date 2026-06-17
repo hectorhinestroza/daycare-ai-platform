@@ -14,6 +14,7 @@ Usage (Railway production):
         --name "My Test Center" \
         --director-email "me@example.com" \
         --director-name "Hector" \
+        --director-phone "+15551234567" \
         --timezone "America/Los_Angeles"
 
 Usage (local SQLite):
@@ -24,12 +25,14 @@ Usage (local SQLite):
     PYTHONPATH=. \
     python scripts/provision_center.py \
         --name "Test Center" \
-        --director-email "test@example.com"
+        --director-email "test@example.com" \
+        --director-phone "+15550199"
 
 Options:
   --name              Center display name (required)
   --director-email    Director admin email (required, must be unique across DB)
   --director-name     Director display name (default: "Director")
+  --director-phone    Director WhatsApp phone in E.164 (needed for WhatsApp sending)
   --timezone          IANA tz string (default: America/New_York)
   --days              Token validity in days (default: 90)
 """
@@ -62,6 +65,11 @@ def main() -> int:
     )
     parser.add_argument(
         "--timezone", default="America/New_York", help="IANA timezone string"
+    )
+    parser.add_argument(
+        "--director-phone", default=None,
+        help="Director WhatsApp phone in E.164 format (e.g. +15551234567). "
+             "Required for the director to send updates via WhatsApp.",
     )
     parser.add_argument(
         "--days", type=int, default=90, help="Director token validity in days"
@@ -114,6 +122,7 @@ def main() -> int:
                 center_id=center_id,
                 email=args.director_email,
                 name=args.director_name,
+                phone=args.director_phone,
                 role="director",
                 is_active=True,
                 created_at=now,

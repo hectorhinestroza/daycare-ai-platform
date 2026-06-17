@@ -437,3 +437,77 @@ def update_contact_endpoint(center_id: UUID, contact_id: UUID, body: ContactUpda
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
     return contact
+
+
+# ─── Director Profile Endpoints ──────────────────────────────
+
+
+class AdminProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+
+
+class AdminProfileOut(BaseModel):
+    id: UUID
+    center_id: UUID
+    email: str
+    name: str
+    phone: Optional[str] = None
+    role: str
+
+    model_config = {"from_attributes": True}
+
+
+@router.get(
+    "/api/admin/profile",
+    response_model=AdminProfileOut,
+)
+def get_admin_profile(
+    db: Session = Depends(get_db),
+    payload: TokenPayload = Depends(require_role("director")),
+):
+    """Get the current director's profile."""
+    from backend.storage.models import Admin
+
+    admin = db.query(Admin).filter(
+        Admin.id == payload.sub,
+        Admin.center_id == payload.center_id,
+    ).first()
+    if not admin:
+        raise HTTPException(status_code=404, detail="Admin not found")
+    return admin
+
+
+@router.patch(
+    "/api/admin/profile",
+    response_model=AdminProfileOut,
+)
+def update_admin_profile(
+    body: AdminProfileUpdate,
+    db: Session = Depends(get_db),
+    payload: TokenPayload = Depends(require_role("director")),
+):
+    """Update the current director's profile (name, WhatsApp phone).
+
+    The phone field is required for directors to send updates via WhatsApp.
+    Format: E.164 (e.g. +15551234567).
+    """
+    from backend.storage.models import Admin
+
+    updates = body.model_dump(exclude_unset=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    admin = db.query(Admin).filter(
+        Admin.id == payload.sub,
+        Admin.center_id == payload.center_id,
+    ).first()
+    if not admin:
+        raise HTTPException(status_code=404, detail="Admin not found")
+
+    for key, value in updates.items():
+        setattr(admin, key, value)
+    db.commit()
+    db.refresh(admin)
+    logger.info(f"Director {payload.sub} updated profile: {list(updates.keys())}")
+    return admin
