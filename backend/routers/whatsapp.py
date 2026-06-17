@@ -49,6 +49,11 @@ router = APIRouter(prefix="/webhook", tags=["whatsapp"])
 # Key: phone number, Value: dict
 _command_context: Dict[str, dict] = {}
 
+# WhatsApp gallery uploads arrive as separate Twilio webhooks, one per
+# photo. After we prompt the teacher about pending photos, suppress further
+# prompts for this window so a 5-photo batch only triggers one bot reply.
+PENDING_PROMPT_DEBOUNCE_S = 300
+
 
 def _phone_hash(phone: str) -> str:
     """Short stable hash of a phone number for log correlation (no PII)."""
@@ -401,6 +406,7 @@ async def _try_photo_context_followup(
     message: str,
     known_names: list,
     center_id_str: str,
+    phone: Optional[str] = None,
 ) -> Optional[Response]:
     """Treat `message` (transcript or text body) as the photo-context reply
     for outstanding pending photos. Returns a TwiML Response if the message
@@ -443,6 +449,9 @@ async def _try_photo_context_followup(
         db, sender, pending_photos, consenting, label,
         fallback_caption=message.strip() or None,
     )
+    # Pending batch is drained — next photo upload starts a fresh prompt cycle.
+    if phone:
+        _command_context.get(phone, {}).pop("pending_prompt_at", None)
     return _build_twiml_response(reply)
 
 
@@ -720,6 +729,7 @@ async def whatsapp_webhook(
                 message=transcript,
                 known_names=known_names,
                 center_id_str=center_id,
+                phone=phone,
             )
             if photo_reply is not None:
                 return photo_reply
@@ -773,6 +783,7 @@ async def whatsapp_webhook(
                 message=body,
                 known_names=known_names,
                 center_id_str=center_id,
+                phone=phone,
             )
             if photo_reply is not None:
                 return photo_reply
@@ -915,6 +926,14 @@ async def whatsapp_webhook(
                     expires_at=expires_at,
                 )
 
+            # Debounce: a WhatsApp gallery upload of N photos becomes N
+            # webhooks. We already prompted the teacher on the first one —
+            # subsequent ones in the same batch should be silent.
+            now = datetime.now(UTC)
+            last_prompt_at = cmd_context.get("pending_prompt_at")
+            if last_prompt_at and (now - last_prompt_at).total_seconds() < PENDING_PROMPT_DEBOUNCE_S:
+                return _build_empty_twiml()
+
             total_pending = len(get_pending_photos_by_teacher(db, sender.id))
             prompt = (
                 f"📷 Got {len(clean_photos)} photo(s)"
@@ -926,6 +945,7 @@ async def whatsapp_webhook(
             )
             if caption and not unmatched_caption_names:
                 prompt += f"\n(Your caption \"{caption}\" didn't name a child.)"
+            _set_command_context(phone, pending_prompt_at=now)
             return _build_twiml_response(prompt)
 
         except Exception as e:

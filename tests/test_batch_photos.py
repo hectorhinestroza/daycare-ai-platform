@@ -301,6 +301,48 @@ class TestMultiMediaWebhook:
     @patch("backend.routers.whatsapp.strip_exif")
     @patch("backend.routers.whatsapp.delete_twilio_media_with_retry", new_callable=AsyncMock)
     @patch("backend.routers.whatsapp.download_twilio_media", new_callable=AsyncMock)
+    def test_consecutive_bare_photos_only_prompt_once(
+        self, mock_download, mock_delete_twilio, mock_strip, mock_upload, setup_db
+    ):
+        """A WhatsApp gallery batch arrives as N separate webhooks. The first
+        should prompt the teacher; the rest should be silent (empty TwiML)
+        so the teacher isn't spammed with N copies of the same prompt.
+        """
+        db = setup_db
+        mock_download.return_value = (b"raw", "image/jpeg")
+        mock_strip.return_value = b"clean"
+
+        def post_one(idx, sid):
+            return client.post(
+                "/webhook/whatsapp",
+                data={
+                    "From": "+15550001111",
+                    "Body": "",
+                    "NumMedia": "1",
+                    "MediaUrl0": f"https://api.twilio.com/p{idx}.jpg",
+                    "MediaContentType0": "image/jpeg",
+                    "MessageSid": sid,
+                },
+            )
+
+        first = post_one(0, "SM1")
+        second = post_one(1, "SM2")
+        third = post_one(2, "SM3")
+
+        assert "Got 1 photo" in first.text
+        # 2nd + 3rd photos: bot stays silent — empty TwiML <Response/>
+        for r in (second, third):
+            assert r.status_code == 200
+            assert "Got" not in r.text
+            assert r.text.strip().endswith("<Response/>")
+
+        # All 3 photos are queued; one prompt sent.
+        assert db.query(PendingPhoto).count() == 3
+
+    @patch("backend.routers.whatsapp.upload_photo")
+    @patch("backend.routers.whatsapp.strip_exif")
+    @patch("backend.routers.whatsapp.delete_twilio_media_with_retry", new_callable=AsyncMock)
+    @patch("backend.routers.whatsapp.download_twilio_media", new_callable=AsyncMock)
     def test_two_photos_no_caption_park_as_pending(
         self,
         mock_download,
