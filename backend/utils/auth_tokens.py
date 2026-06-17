@@ -114,7 +114,7 @@ def generate_token(
     secret: Optional[str] = None,
 ) -> tuple[str, TokenPayload]:
     """Issue a fresh signed token. Returns (token_str, payload)."""
-    secret = secret or get_settings().auth_token_secret
+    secret = get_settings().auth_token_secret if secret is None else secret
     if not secret:
         raise RuntimeError(
             "AUTH_TOKEN_SECRET is not set — cannot issue tokens"
@@ -160,7 +160,7 @@ def verify_token(
     Caller logs the failure; we don't log here to avoid leaking partial
     token state on each request.
     """
-    secret = secret or get_settings().auth_token_secret
+    secret = get_settings().auth_token_secret if secret is None else secret
     if not secret:
         return None
 

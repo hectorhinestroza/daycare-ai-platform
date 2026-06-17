@@ -52,7 +52,7 @@ os.environ.setdefault("AUTH_TOKEN_SECRET", "devsecret")
 # These imports MUST come after the env-var setup above.
 from backend.storage.database import Base, SessionLocal, engine  # noqa: E402
 import backend.storage.models  # noqa: F401, E402  populate Base.metadata
-from backend.storage.models import Admin, Center, Child, Room, Teacher  # noqa: E402
+from backend.storage.models import Admin, Center, Child, Room, Teacher, TeacherClassroom  # noqa: E402
 
 
 SEED_CENTER_NAME = "Sunshine Dev Daycare"
@@ -96,19 +96,38 @@ def main() -> int:
         db.add(Room(id=toddlers_id, center_id=center_id, name="Toddlers"))
         db.add(Room(id=preschool_id, center_id=center_id, name="Preschool"))
 
+        emi_id = uuid.uuid4()
         db.add(Teacher(
-            id=uuid.uuid4(),
+            id=emi_id,
             center_id=center_id,
             name="Ms. Emi",
             phone="+15550100",
-            room_id=toddlers_id,
         ))
+        db.add(TeacherClassroom(
+            teacher_id=emi_id,
+            room_id=toddlers_id,
+            center_id=center_id,
+            is_primary=True,
+        ))
+        db.add(TeacherClassroom(
+            teacher_id=emi_id,
+            room_id=preschool_id,
+            center_id=center_id,
+            is_primary=False,
+        ))
+
+        sara_id = uuid.uuid4()
         db.add(Teacher(
-            id=uuid.uuid4(),
+            id=sara_id,
             center_id=center_id,
             name="Ms. Sara",
             phone="+15550101",
+        ))
+        db.add(TeacherClassroom(
+            teacher_id=sara_id,
             room_id=preschool_id,
+            center_id=center_id,
+            is_primary=True,
         ))
 
         for kid_name, room in [

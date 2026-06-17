@@ -217,6 +217,56 @@ def test_delete_teacher_404_on_missing(db_session):
     assert resp.status_code == 404
 
 
+def test_create_teacher_multi_classroom(db_session):
+    client = TestClient(app)
+    r1 = client.post(f"/api/rooms/{CENTER_ID}", json={"name": "Room 1"}).json()
+    r2 = client.post(f"/api/rooms/{CENTER_ID}", json={"name": "Room 2"}).json()
+    
+    resp = client.post(
+        f"/api/teachers/{CENTER_ID}",
+        json={
+            "name": "Ms. Multi",
+            "phone": "+15550009999",
+            "room_ids": [r1["id"], r2["id"]]
+        }
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["room_id"] == r1["id"]
+    assert set(data["room_ids"]) == {r1["id"], r2["id"]}
+
+
+def test_update_teacher_multi_classroom(db_session):
+    client = TestClient(app)
+    r1 = client.post(f"/api/rooms/{CENTER_ID}", json={"name": "Room 1"}).json()
+    r2 = client.post(f"/api/rooms/{CENTER_ID}", json={"name": "Room 2"}).json()
+    t = client.post(f"/api/teachers/{CENTER_ID}", json={"name": "T", "phone": "+15550009998"}).json()
+    
+    resp = client.patch(
+        f"/api/teachers/{CENTER_ID}/{t['id']}",
+        json={"room_ids": [r2["id"], r1["id"]]}
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["room_id"] == r2["id"] # First is primary
+    assert data["room_ids"] == [r2["id"], r1["id"]]
+
+
+def test_update_teacher_single_room_id_compatibility(db_session):
+    client = TestClient(app)
+    r1 = client.post(f"/api/rooms/{CENTER_ID}", json={"name": "Room 1"}).json()
+    t = client.post(f"/api/teachers/{CENTER_ID}", json={"name": "T", "phone": "+15550009997"}).json()
+    
+    resp = client.patch(
+        f"/api/teachers/{CENTER_ID}/{t['id']}",
+        json={"room_id": r1["id"]}
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["room_id"] == r1["id"]
+    assert data["room_ids"] == [r1["id"]]
+
+
 # ─── Children Tests ───────────────────────────────────────────
 
 

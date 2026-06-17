@@ -24,7 +24,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 
 from backend.storage.database import Base
 
@@ -70,6 +70,23 @@ class Admin(Base):
 # ─── Teachers ─────────────────────────────────────────────────
 
 
+class TeacherClassroom(Base):
+    """Many-to-many join between teachers and classrooms.
+
+    A teacher can be assigned to multiple rooms. ``is_primary`` marks the
+    default room used by the WhatsApp fan-out pipeline when no /classroom
+    context is set. Exactly one row per teacher should have is_primary=True.
+    """
+
+    __tablename__ = "teacher_classrooms"
+
+    teacher_id = Column(UUID(as_uuid=True), ForeignKey("teachers.id", ondelete="CASCADE"), primary_key=True)
+    room_id = Column(UUID(as_uuid=True), ForeignKey("rooms.id", ondelete="CASCADE"), primary_key=True)
+    center_id = Column(UUID(as_uuid=True), ForeignKey("centers.id"), nullable=False)
+    is_primary = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
 class Teacher(Base):
     __tablename__ = "teachers"
 
@@ -77,13 +94,70 @@ class Teacher(Base):
     center_id = Column(UUID(as_uuid=True), ForeignKey("centers.id"), nullable=False)
     name = Column(String(255), nullable=False)
     phone = Column(String(30), nullable=False, unique=True)  # WhatsApp number (E.164)
-    room_id = Column(UUID(as_uuid=True), ForeignKey("rooms.id"), nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     center = relationship("Center", back_populates="teachers")
-    room = relationship("Room", back_populates="teachers")
     events = relationship("Event", back_populates="teacher")
+    classroom_associations = relationship("TeacherClassroom", cascade="all, delete-orphan", lazy="joined")
+    rooms = relationship("Room", secondary="teacher_classrooms", back_populates="teachers", viewonly=True)
+
+    @property
+    def primary_room_id(self):
+        """Return the primary room_id from the M2M table, or None."""
+        for assoc in self.classroom_associations:
+            if assoc.is_primary:
+                return assoc.room_id
+        # Fallback: if no primary is marked, return the first room
+        if self.classroom_associations:
+            return self.classroom_associations[0].room_id
+        return None
+
+    @property
+    def room_ids(self):
+        """Return list of all assigned room IDs, primary first."""
+        sorted_assocs = sorted(self.classroom_associations, key=lambda a: a.is_primary, reverse=True)
+        return [assoc.room_id for assoc in sorted_assocs]
+
+    @property
+    def room_id(self):
+        """Backward-compat property — returns primary room_id."""
+        return self.primary_room_id
+
+    @room_id.setter
+    def room_id(self, val):
+        """Backward-compat setter — sets the primary room association."""
+        if val is None:
+            self.classroom_associations = []
+            return
+
+        from backend.storage.models import TeacherClassroom
+        
+        # Check if already exists
+        found = False
+        for assoc in self.classroom_associations:
+            if assoc.room_id == val:
+                assoc.is_primary = True
+                found = True
+            else:
+                assoc.is_primary = False
+                
+        if not found:
+            assoc = TeacherClassroom(
+                room_id=val,
+                center_id=self.center_id,
+                is_primary=True
+            )
+            for other in self.classroom_associations:
+                other.is_primary = False
+            self.classroom_associations.append(assoc)
+
+    @validates("center_id")
+    def validate_center_id(self, key, value):
+        for assoc in self.classroom_associations:
+            if assoc.center_id is None:
+                assoc.center_id = value
+        return value
 
 
 # ─── Rooms ────────────────────────────────────────────────────
@@ -98,7 +172,7 @@ class Room(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     center = relationship("Center", back_populates="rooms")
-    teachers = relationship("Teacher", back_populates="room")
+    teachers = relationship("Teacher", secondary="teacher_classrooms", back_populates="rooms", viewonly=True)
     children = relationship("Child", back_populates="room")
 
 

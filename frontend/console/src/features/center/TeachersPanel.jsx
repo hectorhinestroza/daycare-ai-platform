@@ -3,7 +3,7 @@ import { createTeacher, deleteTeacher, issueTeacherToken, updateTeacher } from '
 
 export default function TeachersPanel({ centerId, rooms, teachers, addToast, onTeachersChange }) {
   const [showAdd, setShowAdd] = useState(false);
-  const [newTeacher, setNewTeacher] = useState({ name: '', phone: '', room_id: '' });
+  const [newTeacher, setNewTeacher] = useState({ name: '', phone: '', room_ids: [], primary_room_id: '' });
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editFields, setEditFields] = useState({});
@@ -57,11 +57,18 @@ export default function TeachersPanel({ centerId, rooms, teachers, addToast, onT
     if (!newTeacher.name.trim() || !newTeacher.phone.trim()) return;
     setSaving(true);
     try {
-      const data = { name: newTeacher.name.trim(), phone: newTeacher.phone.trim() };
-      if (newTeacher.room_id) data.room_id = newTeacher.room_id;
+      const orderedRoomIds = [
+        newTeacher.primary_room_id,
+        ...newTeacher.room_ids.filter(id => id !== newTeacher.primary_room_id)
+      ].filter(Boolean);
+      const data = { 
+        name: newTeacher.name.trim(), 
+        phone: newTeacher.phone.trim(),
+        room_ids: orderedRoomIds
+      };
       await createTeacher(centerId, data);
       addToast(`${data.name} added`);
-      setNewTeacher({ name: '', phone: '', room_id: '' });
+      setNewTeacher({ name: '', phone: '', room_ids: [], primary_room_id: '' });
       setShowAdd(false);
       onTeachersChange();
     } catch (err) {
@@ -75,7 +82,8 @@ export default function TeachersPanel({ centerId, rooms, teachers, addToast, onT
     setEditFields({
       name: teacher.name,
       phone: teacher.phone,
-      room_id: teacher.room_id || '',
+      room_ids: teacher.room_ids || [],
+      primary_room_id: teacher.room_id || '',
     });
     setEditingId(teacher.id);
   }
@@ -85,7 +93,23 @@ export default function TeachersPanel({ centerId, rooms, teachers, addToast, onT
     const updates = {};
     if (editFields.name !== teacher.name) updates.name = editFields.name;
     if (editFields.phone !== teacher.phone) updates.phone = editFields.phone;
-    if (editFields.room_id !== (teacher.room_id || '')) updates.room_id = editFields.room_id || null;
+    
+    const orderedRoomIds = [
+      editFields.primary_room_id,
+      ...editFields.room_ids.filter(id => id !== editFields.primary_room_id)
+    ].filter(Boolean);
+
+    const currentOrderedRoomIds = [
+      teacher.room_id,
+      ...(teacher.room_ids || []).filter(id => id !== teacher.room_id)
+    ].filter(Boolean);
+
+    const changed = orderedRoomIds.length !== currentOrderedRoomIds.length ||
+      orderedRoomIds.some((id, idx) => id !== currentOrderedRoomIds[idx]);
+
+    if (changed) {
+      updates.room_ids = orderedRoomIds;
+    }
 
     if (Object.keys(updates).length === 0) {
       setEditingId(null);
@@ -140,7 +164,7 @@ export default function TeachersPanel({ centerId, rooms, teachers, addToast, onT
       {showAdd && (
         <form onSubmit={handleAdd} className="japandi-card rounded-lg shadow-ambient p-5 mb-6 card-appear">
           <h4 className="font-headline text-lg text-on-surface mb-4">New Teacher</h4>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
             <div>
               <label className="text-xs font-medium text-on-surface-variant mb-1.5 block">Name *</label>
               <input
@@ -164,19 +188,59 @@ export default function TeachersPanel({ centerId, rooms, teachers, addToast, onT
                 required
               />
             </div>
+          </div>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+            <div className="sm:col-span-2">
+              <label className="text-xs font-medium text-on-surface-variant mb-1.5 block">Classrooms</label>
+              <div className="flex flex-wrap gap-2 p-3 bg-surface-container rounded-lg border border-outline-variant/10 min-h-[46px]">
+                {rooms.length === 0 ? (
+                  <span className="text-xs text-on-surface-variant">No classrooms available</span>
+                ) : (
+                  rooms.map((r) => {
+                    const isChecked = (newTeacher.room_ids || []).includes(r.id);
+                    return (
+                      <label key={r.id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border cursor-pointer select-none transition-all ${isChecked ? 'bg-primary-container text-on-primary-container border-primary' : 'bg-surface-container-high text-on-surface-variant border-outline-variant/30 hover:border-outline-variant/60'}`}>
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(e) => {
+                            const updatedIds = e.target.checked
+                              ? [...(newTeacher.room_ids || []), r.id]
+                              : (newTeacher.room_ids || []).filter((id) => id !== r.id);
+                            let updatedPrimary = newTeacher.primary_room_id;
+                            if (!updatedIds.includes(updatedPrimary)) {
+                              updatedPrimary = updatedIds[0] || '';
+                            }
+                            setNewTeacher({ ...newTeacher, room_ids: updatedIds, primary_room_id: updatedPrimary });
+                          }}
+                          className="sr-only"
+                        />
+                        {r.name}
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+            </div>
             <div>
-              <label className="text-xs font-medium text-on-surface-variant mb-1.5 block">Classroom</label>
+              <label className="text-xs font-medium text-on-surface-variant mb-1.5 block">Primary Classroom</label>
               <select
-                value={newTeacher.room_id}
-                onChange={(e) => setNewTeacher({ ...newTeacher, room_id: e.target.value })}
-                className={inputClass}
+                value={newTeacher.primary_room_id}
+                onChange={(e) => setNewTeacher({ ...newTeacher, primary_room_id: e.target.value })}
+                disabled={!(newTeacher.room_ids && newTeacher.room_ids.length > 0)}
+                className={`${inputClass} disabled:opacity-50`}
               >
-                <option value="">Unassigned</option>
-                {rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                <option value="">Select primary...</option>
+                {rooms
+                  .filter((r) => (newTeacher.room_ids || []).includes(r.id))
+                  .map((r) => <option key={r.id} value={r.id}>{r.name}</option>)
+                }
               </select>
             </div>
           </div>
-          <div className="flex gap-3 justify-end pt-4">
+
+          <div className="flex gap-3 justify-end pt-2">
             <button type="button" onClick={() => setShowAdd(false)} className="btn-secondary" disabled={saving}>Cancel</button>
             <button type="submit" className="btn-primary" disabled={saving || !newTeacher.name.trim() || !newTeacher.phone.trim()}>
               {saving ? 'Adding...' : 'Add Teacher'}
@@ -195,13 +259,12 @@ export default function TeachersPanel({ centerId, rooms, teachers, addToast, onT
       ) : (
         <div className="space-y-3">
           {teachers.map((teacher) => {
-            const room = rooms.find((r) => r.id === teacher.room_id);
             const isEditing = editingId === teacher.id;
 
             if (isEditing) {
               return (
                 <div key={teacher.id} className="japandi-card rounded-lg shadow-ambient p-5 card-appear">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
                     <div>
                       <label className="text-xs font-medium text-on-surface-variant mb-1 block">Name</label>
                       <input
@@ -220,18 +283,58 @@ export default function TeachersPanel({ centerId, rooms, teachers, addToast, onT
                         className={inputClass}
                       />
                     </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                    <div className="sm:col-span-2">
+                      <label className="text-xs font-medium text-on-surface-variant mb-1.5 block">Classrooms</label>
+                      <div className="flex flex-wrap gap-2 p-3 bg-surface-container rounded-lg border border-outline-variant/10 min-h-[46px]">
+                        {rooms.length === 0 ? (
+                          <span className="text-xs text-on-surface-variant">No classrooms available</span>
+                        ) : (
+                          rooms.map((r) => {
+                            const isChecked = (editFields.room_ids || []).includes(r.id);
+                            return (
+                              <label key={r.id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border cursor-pointer select-none transition-all ${isChecked ? 'bg-primary-container text-on-primary-container border-primary' : 'bg-surface-container-high text-on-surface-variant border-outline-variant/30 hover:border-outline-variant/60'}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    const updatedIds = e.target.checked
+                                      ? [...(editFields.room_ids || []), r.id]
+                                      : (editFields.room_ids || []).filter((id) => id !== r.id);
+                                    let updatedPrimary = editFields.primary_room_id;
+                                    if (!updatedIds.includes(updatedPrimary)) {
+                                      updatedPrimary = updatedIds[0] || '';
+                                    }
+                                    setEditFields({ ...editFields, room_ids: updatedIds, primary_room_id: updatedPrimary });
+                                  }}
+                                  className="sr-only"
+                                />
+                                {r.name}
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
                     <div>
-                      <label className="text-xs font-medium text-on-surface-variant mb-1 block">Classroom</label>
+                      <label className="text-xs font-medium text-on-surface-variant mb-1.5 block">Primary Classroom</label>
                       <select
-                        value={editFields.room_id}
-                        onChange={(e) => setEditFields({ ...editFields, room_id: e.target.value })}
-                        className={inputClass}
+                        value={editFields.primary_room_id}
+                        onChange={(e) => setEditFields({ ...editFields, primary_room_id: e.target.value })}
+                        disabled={!(editFields.room_ids && editFields.room_ids.length > 0)}
+                        className={`${inputClass} disabled:opacity-50`}
                       >
-                        <option value="">Unassigned</option>
-                        {rooms.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                        <option value="">Select primary...</option>
+                        {rooms
+                          .filter((r) => (editFields.room_ids || []).includes(r.id))
+                          .map((r) => <option key={r.id} value={r.id}>{r.name}</option>)
+                        }
                       </select>
                     </div>
                   </div>
+
                   <div className="flex items-center gap-2 pt-3">
                     <button
                       onClick={() => removeTeacher(teacher)}
@@ -266,11 +369,24 @@ export default function TeachersPanel({ centerId, rooms, teachers, addToast, onT
                     <h4 className="font-semibold text-on-surface truncate">{teacher.name}</h4>
                     <div className="flex items-center gap-3 mt-0.5 text-xs text-on-surface-variant">
                       <span>{teacher.phone}</span>
-                      {room && (
-                        <>
-                          <span className="text-on-surface-variant/40">·</span>
-                          <span>{room.name}</span>
-                        </>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {teacher.room_ids && teacher.room_ids.length > 0 ? (
+                        teacher.room_ids.map((rId) => {
+                          const room = rooms.find((r) => r.id === rId);
+                          if (!room) return null;
+                          const isPrimary = teacher.room_id === rId;
+                          return (
+                            <span
+                              key={rId}
+                              className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium transition-all ${isPrimary ? 'bg-primary-container/85 text-on-primary-container border border-primary/20' : 'bg-surface-container-highest text-on-surface-variant border border-outline-variant/10'}`}
+                            >
+                              {room.name} {isPrimary && '(Primary)'}
+                            </span>
+                          );
+                        })
+                      ) : (
+                        <span className="text-[10px] font-medium text-on-surface-variant/50 italic">Unassigned</span>
                       )}
                     </div>
                   </div>

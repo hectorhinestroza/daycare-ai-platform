@@ -160,7 +160,7 @@ def fan_out_batch_event(
     # Resolve room if not provided explicitly
     if not room_id:
         teacher = db.query(Teacher).filter(Teacher.id == teacher_id).first() if teacher_id else None
-        room_id = teacher.room_id if teacher else None
+        room_id = teacher.primary_room_id if teacher else None
 
     if not room_id:
         # No room assigned — treat as low-confidence single event, director queue

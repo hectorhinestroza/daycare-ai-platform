@@ -59,12 +59,14 @@ class TeacherCreate(BaseModel):
     name: str
     phone: str
     room_id: Optional[UUID] = None
+    room_ids: Optional[List[UUID]] = None
 
 
 class TeacherUpdate(BaseModel):
     name: Optional[str] = None
     phone: Optional[str] = None
     room_id: Optional[UUID] = None
+    room_ids: Optional[List[UUID]] = None
     is_active: Optional[bool] = None
 
 
@@ -74,6 +76,7 @@ class TeacherOut(BaseModel):
     name: str
     phone: str
     room_id: Optional[UUID] = None
+    room_ids: List[UUID] = []
     is_active: bool
     created_at: Optional[datetime] = None
 
@@ -227,7 +230,7 @@ def _translate_teacher_integrity_error(err: IntegrityError, phone: Optional[str]
 def create_teacher_endpoint(center_id: UUID, body: TeacherCreate, db: Session = Depends(get_db)):
     """Register a new teacher."""
     try:
-        teacher = create_teacher(db, center_id, body.name, body.phone, body.room_id)
+        teacher = create_teacher(db, center_id, body.name, body.phone, body.room_id, body.room_ids)
     except IntegrityError as e:
         db.rollback()
         raise _translate_teacher_integrity_error(e, phone=body.phone)

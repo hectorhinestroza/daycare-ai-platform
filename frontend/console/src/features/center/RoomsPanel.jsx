@@ -74,7 +74,7 @@ export default function RoomsPanel({ centerId, rooms, teachers, addToast, onRoom
       </form>
 
       {rooms.map((room) => {
-        const roomTeachers = teachers.filter((t) => t.room_id === room.id);
+        const roomTeachers = teachers.filter((t) => (t.room_ids || []).includes(room.id));
         const isEditing = editingId === room.id;
 
         return (

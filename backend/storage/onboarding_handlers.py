@@ -74,6 +74,7 @@ def create_teacher(
     name: str,
     phone: str,
     room_id: Optional[uuid.UUID] = None,
+    room_ids: Optional[List[uuid.UUID]] = None,
 ) -> Teacher:
     """Register a new teacher."""
     teacher = Teacher(
@@ -81,9 +82,24 @@ def create_teacher(
         center_id=center_id,
         name=name,
         phone=phone,
-        room_id=room_id,
     )
     db.add(teacher)
+    db.flush()
+
+    if room_ids is None and room_id is not None:
+        room_ids = [room_id]
+
+    if room_ids:
+        from backend.storage.models import TeacherClassroom
+        for i, r_id in enumerate(room_ids):
+            assoc = TeacherClassroom(
+                teacher_id=teacher.id,
+                room_id=r_id,
+                center_id=center_id,
+                is_primary=(i == 0),
+            )
+            db.add(assoc)
+
     db.commit()
     db.refresh(teacher)
     return teacher
@@ -100,14 +116,50 @@ def update_teacher(
     teacher_id: uuid.UUID,
     updates: dict,
 ) -> Optional[Teacher]:
-    """Update teacher fields (name, phone, room_id, is_active)."""
+    """Update teacher fields (name, phone, room_ids, is_active)."""
     teacher = db.query(Teacher).filter(Teacher.id == teacher_id, Teacher.center_id == center_id).first()
     if not teacher:
         return None
-    allowed = {"name", "phone", "room_id", "is_active"}
+    
+    # Handle single room_id to room_ids conversion for backward compatibility
+    if "room_id" in updates:
+        r_id = updates["room_id"]
+        if r_id:
+            updates["room_ids"] = [r_id]
+        else:
+            updates["room_ids"] = []
+
+    allowed = {"name", "phone", "is_active"}
     for key, value in updates.items():
         if key in allowed:
             setattr(teacher, key, value)
+
+    if "room_ids" in updates:
+        room_ids = updates["room_ids"] or []
+        from backend.storage.models import TeacherClassroom
+
+        # Determine if there's an existing primary room
+        existing_associations = db.query(TeacherClassroom).filter(TeacherClassroom.teacher_id == teacher_id).all()
+        existing_primary_room_id = None
+        for assoc in existing_associations:
+            if assoc.is_primary:
+                existing_primary_room_id = assoc.room_id
+                break
+
+        # Clear existing associations
+        db.query(TeacherClassroom).filter(TeacherClassroom.teacher_id == teacher_id).delete()
+
+        if room_ids:
+            primary_room_id = room_ids[0]
+            for r_id in room_ids:
+                assoc = TeacherClassroom(
+                    teacher_id=teacher_id,
+                    room_id=r_id,
+                    center_id=center_id,
+                    is_primary=(r_id == primary_room_id),
+                )
+                db.add(assoc)
+
     db.commit()
     db.refresh(teacher)
     return teacher
