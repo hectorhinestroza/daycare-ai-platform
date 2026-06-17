@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from backend.config import get_settings
 from backend.services.extraction import extract_events
+from backend.services.photo_context import resolve_photo_context
 from backend.services.transcription import transcribe_audio
 from backend.storage.database import get_db
 from backend.storage.events_handlers import (
@@ -24,12 +25,13 @@ from backend.storage.events_handlers import (
     create_photo,
     delete_pending_photo,
     fan_out_batch_event,
+    fan_out_photo,
     get_child_by_name,
     get_children_by_center,
     get_pending_photos_by_teacher,
     get_teacher_by_phone,
 )
-from backend.storage.models import Admin, PendingEvent, Room
+from backend.storage.models import Admin, Child, PendingEvent, Room
 from backend.utils.consent_gate import get_child_for_processing
 from backend.utils.media import delete_twilio_media_with_retry, download_twilio_media
 from backend.utils.photo import build_pending_s3_key, build_photo_s3_key, strip_exif
@@ -300,13 +302,175 @@ async def _process_and_persist_events(
     return _build_twiml_response(msg)
 
 
+def _collect_media(num_media: int, urls: list, content_types: list) -> list:
+    """Pack the indexed MediaUrl/MediaContentType form params into a tidy list.
+
+    Twilio sends up to 10 media items as MediaUrl0..MediaUrl9 + matching
+    MediaContentType0..MediaContentType9. We just want the populated pairs,
+    in order, capped at NumMedia.
+    """
+    items: list = []
+    for i in range(min(num_media, len(urls))):
+        url = urls[i]
+        ctype = content_types[i] if i < len(content_types) else None
+        if url:
+            items.append({"url": url, "content_type": ctype or ""})
+    return items
+
+
+def _resolve_room_roster(db: Session, sender, is_director: bool) -> list:
+    """Return active children scoped to the sender's room(s) for fan-out.
+
+    Teacher: union of all rooms they're assigned to (M2M).
+    Director: all active children in the center.
+    """
+    q = db.query(Child).filter(
+        Child.center_id == sender.center_id,
+        Child.status == "ACTIVE",
+    )
+    if is_director:
+        return q.all()
+    room_ids = getattr(sender, "room_ids", None) or []
+    if not room_ids:
+        return q.all()
+    return q.filter(Child.room_id.in_(room_ids)).all()
+
+
+def _consent_filter(db: Session, center_id, children: list, environment: str) -> list:
+    """Drop children without active parental consent (Phase 2 gate)."""
+    consenting = []
+    for c in children:
+        rec = get_child_for_processing(
+            child_id=c.id,
+            center_id=center_id,
+            db=db,
+            environment=environment,
+            pipeline_stage="photo_upload",
+        )
+        if rec is not None:
+            consenting.append(c)
+    return consenting
+
+
+async def _apply_pending_to_children(
+    db: Session,
+    sender,
+    pending_photos: list,
+    children: list,
+    label: str,
+    fallback_caption: Optional[str] = None,
+) -> str:
+    """Move every pending photo from temp S3 to its final key, then create
+    one Photo row per (photo × child). Returns a short reply string.
+
+    When the PendingPhoto has no caption of its own (the typical case — the
+    teacher sent the photo bare and is replying with the description now),
+    fall back to `fallback_caption` so the description the teacher just
+    wrote is what parents see in the feed.
+    """
+    if not pending_photos:
+        return ""
+    saved = 0
+    for p in pending_photos:
+        try:
+            clean_bytes = download_from_s3(p.s3_temp_key)
+            # One final S3 object per photo; fan out only the DB rows.
+            final_key = build_photo_s3_key(sender.center_id, children[0].id)
+            upload_photo(clean_bytes, final_key)
+            fan_out_photo(
+                db,
+                center_id=sender.center_id,
+                child_ids=[c.id for c in children],
+                s3_key=final_key,
+                caption=p.caption or fallback_caption,
+                content_type=p.content_type or "image/jpeg",
+            )
+            delete_s3_object(p.s3_temp_key)
+            delete_pending_photo(db, p.id)
+            saved += 1
+        except Exception:
+            logger.exception("photo.pending_apply_failed pending_photo_id=%s", p.id)
+    return f"✅ Saved {saved} photo(s) for {label}."
+
+
+async def _try_photo_context_followup(
+    db: Session,
+    sender,
+    is_director: bool,
+    pending_photos: list,
+    message: str,
+    known_names: list,
+    center_id_str: str,
+) -> Optional[Response]:
+    """Treat `message` (transcript or text body) as the photo-context reply
+    for outstanding pending photos. Returns a TwiML Response if the message
+    resolved to children and was applied; None if the caller should fall
+    through to normal event extraction (the message wasn't photo context).
+    """
+    if not pending_photos or not message.strip():
+        return None
+
+    ctx = await resolve_photo_context(message, known_names, center_id_str, db)
+    if not ctx.has_context:
+        return None  # Not a photo-context reply — let event extraction run.
+
+    if ctx.applies_to_all:
+        children = _resolve_room_roster(db, sender, is_director)
+        label = "everyone"
+    else:
+        children, unrecognized = [], []
+        for n in ctx.child_names:
+            c = get_child_by_name(db, sender.center_id, n)
+            if c:
+                children.append(c)
+            else:
+                unrecognized.append(n)
+        if not children:
+            return _build_twiml_response(
+                f"⚠️ I couldn't match '{', '.join(unrecognized)}' to your roster. "
+                f"Reply with the enrolled name(s)."
+            )
+        label = ", ".join(c.name for c in children)
+
+    settings = get_settings()
+    consenting = _consent_filter(db, sender.center_id, children, settings.environment)
+    if not consenting:
+        return _build_twiml_response(
+            "⚠️ No parental consent on file for those children. Photos not saved."
+        )
+
+    reply = await _apply_pending_to_children(
+        db, sender, pending_photos, consenting, label,
+        fallback_caption=message.strip() or None,
+    )
+    return _build_twiml_response(reply)
+
+
 @router.post("/whatsapp", dependencies=[Depends(verify_twilio_signature)])
 async def whatsapp_webhook(
     From: str = Form(""),
     Body: str = Form(""),
     NumMedia: str = Form("0"),
     MediaUrl0: str = Form(None),
+    MediaUrl1: str = Form(None),
+    MediaUrl2: str = Form(None),
+    MediaUrl3: str = Form(None),
+    MediaUrl4: str = Form(None),
+    MediaUrl5: str = Form(None),
+    MediaUrl6: str = Form(None),
+    MediaUrl7: str = Form(None),
+    MediaUrl8: str = Form(None),
+    MediaUrl9: str = Form(None),
     MediaContentType0: str = Form(None),
+    MediaContentType1: str = Form(None),
+    MediaContentType2: str = Form(None),
+    MediaContentType3: str = Form(None),
+    MediaContentType4: str = Form(None),
+    MediaContentType5: str = Form(None),
+    MediaContentType6: str = Form(None),
+    MediaContentType7: str = Form(None),
+    MediaContentType8: str = Form(None),
+    MediaContentType9: str = Form(None),
     MessageSid: str = Form(None),
     ProfileName: str = Form(None),
     SmsStatus: str = Form(None),
@@ -316,8 +480,9 @@ async def whatsapp_webhook(
 
     Supports:
     - Voice messages (.ogg/.mp4) → transcribe → extract events → save to DB
-    - Text commands (/child, /classroom)
-    - Photo messages (stored for later attachment)
+    - Text commands (legacy /child, /classroom)
+    - Photo messages — single or batch (up to 10). Context resolved from the
+      caption (if any) or from a follow-up voice/text reply.
     """
     webhook_start = time.monotonic()
 
@@ -325,8 +490,17 @@ async def whatsapp_webhook(
     phone = From.replace("whatsapp:", "").strip()
     body = Body.strip()
     num_media = int(NumMedia)
+
+    media_items = _collect_media(
+        num_media,
+        [MediaUrl0, MediaUrl1, MediaUrl2, MediaUrl3, MediaUrl4,
+         MediaUrl5, MediaUrl6, MediaUrl7, MediaUrl8, MediaUrl9],
+        [MediaContentType0, MediaContentType1, MediaContentType2, MediaContentType3, MediaContentType4,
+         MediaContentType5, MediaContentType6, MediaContentType7, MediaContentType8, MediaContentType9],
+    )
+    image_items = [m for m in media_items if "image" in (m["content_type"] or "")]
     has_audio = bool(MediaContentType0 and ("audio" in MediaContentType0 or "video" in MediaContentType0))
-    has_image = bool(MediaContentType0 and "image" in MediaContentType0)
+    has_image = bool(image_items)
 
     # Dedup Twilio retries before doing any work.
     if not _claim_message_sid(db, MessageSid):
@@ -538,6 +712,18 @@ async def whatsapp_webhook(
             del audio_bytes
             gc.collect()
 
+            # 1.5 If the teacher has pending photos waiting for context, try
+            # treating this voice note as the assignment reply first.
+            pending_photos = [] if is_director else get_pending_photos_by_teacher(db, sender.id)
+            photo_reply = await _try_photo_context_followup(
+                db, sender, is_director, pending_photos,
+                message=transcript,
+                known_names=known_names,
+                center_id_str=center_id,
+            )
+            if photo_reply is not None:
+                return photo_reply
+
             # 2. Extract
             events, unrecognized_names = await extract_events(
                 transcript=transcript,
@@ -576,9 +762,20 @@ async def whatsapp_webhook(
                 "📩 Note received — pending review. (AI extraction is currently paused.)"
             )
         try:
-            # Extract
             center_children = get_children_by_center(db, sender.center_id)
             known_names = [c.name for c in center_children]
+
+            # 4.1 Photo-context follow-up: if there are pending photos awaiting
+            # assignment, treat this text as the names/group reply first.
+            pending_photos = [] if is_director else get_pending_photos_by_teacher(db, sender.id)
+            photo_reply = await _try_photo_context_followup(
+                db, sender, is_director, pending_photos,
+                message=body,
+                known_names=known_names,
+                center_id_str=center_id,
+            )
+            if photo_reply is not None:
+                return photo_reply
 
             events, unrecognized_names = await extract_events(
                 transcript=body,
@@ -607,71 +804,107 @@ async def whatsapp_webhook(
                 "❌ Sorry, I had trouble processing that message. Please try again."
             )
 
-    # 5. Handle Photos
-    if (
-        num_media >= 1
-        and MediaContentType0
-        and "image" in MediaContentType0
-    ):
+    # 5. Handle Photos — single or batch (up to 10 per Twilio message)
+    if image_items:
         try:
-            # Download from Twilio immediately
-            photo_bytes, content_type = await download_twilio_media(MediaUrl0)
-
-            # Zero retention — delete from Twilio (fire-and-forget, matches audio pattern)
-            asyncio.create_task(delete_twilio_media_with_retry(MediaUrl0))
-
-            # Strip EXIF immediately — no raw metadata in S3, even temporarily
-            clean_bytes = strip_exif(photo_bytes)
-            del photo_bytes
+            # 5.1 Download + EXIF-strip every image in the batch.
+            clean_photos: list = []
+            for item in image_items:
+                pb, _ = await download_twilio_media(item["url"])
+                asyncio.create_task(delete_twilio_media_with_retry(item["url"]))
+                clean_photos.append(strip_exif(pb))
+                del pb
             gc.collect()
 
             caption = body if body else None
             settings = get_settings()
+            center_children = get_children_by_center(db, sender.center_id)
+            known_names = [c.name for c in center_children if c.name]
+
+            # 5.2 Decide target children.
+            #
+            # Priority order:
+            #   a) Legacy /child context (back-compat) — single child for whole batch
+            #   b) Caption resolved by AI → one or many children, or applies_to_all
+            #   c) Neither → park in pending and prompt the teacher
+            target_children: list = []
+            applies_to_all = False
+            unmatched_caption_names: list = []
 
             if child_context:
-                # Happy path: child context is set → full pipeline
-                child = get_child_by_name(db, sender.center_id, child_context)
-                if not child:
+                c = get_child_by_name(db, sender.center_id, child_context)
+                if not c:
                     return _build_twiml_response(
                         f"❌ Child '{child_context}' not found in roster. Photo not saved."
                     )
-
-                child_record = get_child_for_processing(
-                    child_id=child.id,
-                    center_id=sender.center_id,
-                    db=db,
-                    environment=settings.environment,
-                    pipeline_stage="photo_upload",
+                target_children = [c]
+            elif caption:
+                ctx = await resolve_photo_context(
+                    caption, known_names, center_id, db
                 )
-                if child_record is None:
+                if ctx.applies_to_all:
+                    target_children = _resolve_room_roster(db, sender, is_director)
+                    applies_to_all = True
+                elif ctx.child_names:
+                    for n in ctx.child_names:
+                        c = get_child_by_name(db, sender.center_id, n)
+                        if c:
+                            target_children.append(c)
+                        else:
+                            unmatched_caption_names.append(n)
+
+            # 5.3 Resolved targets → consent-gate + persist
+            if target_children:
+                consenting = _consent_filter(
+                    db, sender.center_id, target_children, settings.environment
+                )
+                if not consenting:
                     return _build_twiml_response(
-                        f"❌ No parental consent for {child_context}. Photo not saved."
+                        "⚠️ No parental consent for those children. Photos not saved."
                     )
 
-                s3_key = build_photo_s3_key(sender.center_id, child.id)
-                upload_photo(clean_bytes, s3_key)
-                create_photo(
-                    db,
-                    center_id=sender.center_id,
-                    child_id=child.id,
-                    s3_key=s3_key,
-                    caption=caption,
-                    content_type="image/jpeg",
+                # One final S3 object per photo; N Photo rows per object.
+                photo_count = 0
+                for clean_bytes in clean_photos:
+                    final_key = build_photo_s3_key(sender.center_id, consenting[0].id)
+                    upload_photo(clean_bytes, final_key)
+                    fan_out_photo(
+                        db,
+                        center_id=sender.center_id,
+                        child_ids=[c.id for c in consenting],
+                        s3_key=final_key,
+                        caption=caption,
+                        content_type="image/jpeg",
+                    )
+                    photo_count += 1
+
+                label = "everyone" if applies_to_all else ", ".join(c.name for c in consenting)
+                msg = f"📷 Saved {photo_count} photo(s) for {label}."
+                if unmatched_caption_names:
+                    msg += (
+                        f"\n⚠️ Couldn't match '{', '.join(unmatched_caption_names)}' — "
+                        f"reply with their enrolled name(s) to add them."
+                    )
+                logger.info(
+                    "photo.batch_saved photos=%d children=%d director=%s",
+                    photo_count, len(consenting), is_director,
                 )
-                logger.info("photo.saved child_id=%s", child.id)
-                msg = f"📷 Photo saved for {child_context}."
-                if caption:
-                    msg += f' Caption: "{caption}"'
                 return _build_twiml_response(msg)
-            else:
-                if is_director:
-                    return _build_twiml_response(
-                        "⚠️ As a director, please set a child context first using /child [name] before sending photos."
-                    )
-                # No child context → store as pending, prompt teacher
+
+            # 5.4 No target → park every image as pending (teachers only) and prompt.
+            if is_director:
+                # PendingPhoto requires a teachers.id FK. Directors must name
+                # the child up front via caption — we can't queue them.
+                return _build_twiml_response(
+                    "⚠️ As a director, please add a caption naming the child(ren) "
+                    "(e.g. 'Clara and Emi at lunch') or say 'everyone' to send to "
+                    "the whole center."
+                )
+
+            expires_at = datetime.now(UTC) + timedelta(minutes=30)
+            for clean_bytes in clean_photos:
                 s3_temp_key = build_pending_s3_key(sender.center_id, sender.id)
                 upload_photo(clean_bytes, s3_temp_key)
-                expires_at = datetime.now(UTC) + timedelta(minutes=30)
                 create_pending_photo(
                     db,
                     center_id=sender.center_id,
@@ -681,10 +914,19 @@ async def whatsapp_webhook(
                     content_type="image/jpeg",
                     expires_at=expires_at,
                 )
-                logger.info(f"Photo stored as pending for teacher {sender.id}")
-                return _build_twiml_response(
-                    "📷 Photo received! Please assign it to a child with /child [name]"
-                )
+
+            total_pending = len(get_pending_photos_by_teacher(db, sender.id))
+            prompt = (
+                f"📷 Got {len(clean_photos)} photo(s)"
+                + (f" — {total_pending} pending total" if total_pending != len(clean_photos) else "")
+                + ". Reply (text or voice note) with who's in them and what's "
+                "happening — e.g. \"Clara and Emi building a tower\" or "
+                "\"everyone eating snack.\" I'll save your description as the "
+                "caption for parents."
+            )
+            if caption and not unmatched_caption_names:
+                prompt += f"\n(Your caption \"{caption}\" didn't name a child.)"
+            return _build_twiml_response(prompt)
 
         except Exception as e:
             logger.error(
@@ -697,5 +939,6 @@ async def whatsapp_webhook(
 
     # 6. Fallback
     return _build_twiml_response(
-        "👋 Hi! Send a voice memo to log events, or use /child [name] to set context."
+        "👋 Hi! Send a voice memo to log events, or send a photo with a caption "
+        "naming who's in it. You can also send several photos and reply with the names."
     )

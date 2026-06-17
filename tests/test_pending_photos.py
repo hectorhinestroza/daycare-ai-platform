@@ -100,7 +100,9 @@ class TestPhotoWithoutContext:
         )
 
         assert response.status_code == 200
-        assert "assign it to a child" in response.text
+        # New flow: bot prompts for who's in the photo via reply, no /child needed.
+        assert "Got 1 photo" in response.text
+        assert "who" in response.text.lower()
 
         pending = db.query(PendingPhoto).all()
         assert len(pending) == 1
@@ -167,7 +169,9 @@ class TestPhotoWithContext:
         )
 
         assert response.status_code == 200
-        assert "saved for Jason" in response.text
+        # New wording: "Saved 1 photo(s) for Jason." (also works for batches)
+        assert "for Jason" in response.text
+        assert "Saved" in response.text
 
         photos = db.query(Photo).all()
         assert len(photos) == 1
