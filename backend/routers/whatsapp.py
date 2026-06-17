@@ -54,6 +54,12 @@ _command_context: Dict[str, dict] = {}
 # prompts for this window so a 5-photo batch only triggers one bot reply.
 PENDING_PROMPT_DEBOUNCE_S = 300
 
+# Before the prompting webhook tells the teacher the count, give sibling
+# webhooks a beat to commit their pending rows so the headline says "Got 5
+# photos" rather than "Got 1 photo." Twilio's webhook timeout is 15s — this
+# is well under the safe budget. Patched to 0 in unit tests.
+PHOTO_BATCH_COALESCE_S = 1.5
+
 
 def _phone_hash(phone: str) -> str:
     """Short stable hash of a phone number for log correlation (no PII)."""
@@ -948,18 +954,21 @@ async def whatsapp_webhook(
             if last_prompt_at and (now - last_prompt_at).total_seconds() < PENDING_PROMPT_DEBOUNCE_S:
                 return _build_empty_twiml()
 
+            # Claim the prompt slot BEFORE the coalesce sleep so concurrent
+            # sibling webhooks see the timestamp and stay silent.
+            _set_command_context(phone, pending_prompt_at=now)
+            if PHOTO_BATCH_COALESCE_S > 0:
+                await asyncio.sleep(PHOTO_BATCH_COALESCE_S)
+
             total_pending = len(get_pending_photos_by_teacher(db, sender.id))
             prompt = (
-                f"📷 Got {len(clean_photos)} photo(s)"
-                + (f" — {total_pending} pending total" if total_pending != len(clean_photos) else "")
-                + ". Reply (text or voice note) with who's in them and what's "
-                "happening — e.g. \"Clara and Emi building a tower\" or "
-                "\"everyone eating snack.\" I'll save your description as the "
-                "caption for parents."
+                f"📷 Got {total_pending} photo(s). Reply (text or voice note) "
+                "with who's in them and what's happening — e.g. \"Clara and "
+                "Emi building a tower\" or \"everyone eating snack.\" I'll "
+                "save your description as the caption for parents."
             )
             if caption and not unmatched_caption_names:
                 prompt += f"\n(Your caption \"{caption}\" didn't name a child.)"
-            _set_command_context(phone, pending_prompt_at=now)
             return _build_twiml_response(prompt)
 
         except Exception as e:
