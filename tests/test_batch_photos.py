@@ -306,6 +306,133 @@ class TestMultiMediaWebhook:
     @patch("backend.routers.whatsapp.strip_exif")
     @patch("backend.routers.whatsapp.delete_twilio_media_with_retry", new_callable=AsyncMock)
     @patch("backend.routers.whatsapp.download_twilio_media", new_callable=AsyncMock)
+    def test_new_batch_count_ignores_stale_pending(
+        self, mock_download, mock_delete_twilio, mock_strip, mock_upload, setup_db
+    ):
+        """If the teacher abandoned an earlier batch (rows lingering in
+        PendingPhoto until the 30-min TTL), a fresh upload should only
+        report the count of THIS batch — not 'Got 4' when they sent 2.
+        """
+        db = setup_db
+        center = db.query(Center).first()
+        teacher = db.query(Teacher).first()
+
+        # Two stale pending photos from a previous, unresolved batch.
+        for s3 in ("pending/stale1.jpg", "pending/stale2.jpg"):
+            db.add(
+                PendingPhoto(
+                    id=uuid.uuid4(),
+                    center_id=center.id,
+                    teacher_id=teacher.id,
+                    s3_temp_key=s3,
+                    content_type="image/jpeg",
+                    expires_at=datetime.now(UTC) + timedelta(minutes=25),
+                )
+            )
+        db.commit()
+
+        mock_download.return_value = (b"raw", "image/jpeg")
+        mock_strip.return_value = b"clean"
+
+        # Teacher now uploads 2 fresh photos.
+        resp = client.post(
+            "/webhook/whatsapp",
+            data={
+                "From": "+15550001111",
+                "Body": "",
+                "NumMedia": "2",
+                "MediaUrl0": "https://api.twilio.com/a.jpg",
+                "MediaUrl1": "https://api.twilio.com/b.jpg",
+                "MediaContentType0": "image/jpeg",
+                "MediaContentType1": "image/jpeg",
+            },
+        )
+        assert resp.status_code == 200
+        # Count is THIS batch only (2), not stale + new (4).
+        assert "Got 2 photo" in resp.text
+        # All 4 rows physically exist; only the 2 fresh ones are reported.
+        assert db.query(PendingPhoto).count() == 4
+
+    @patch("backend.routers.whatsapp.resolve_photo_context", new_callable=AsyncMock)
+    @patch("backend.routers.whatsapp.get_child_for_processing")
+    @patch("backend.routers.whatsapp.delete_s3_object")
+    @patch("backend.routers.whatsapp.upload_photo")
+    @patch("backend.routers.whatsapp.strip_exif")
+    @patch("backend.routers.whatsapp.delete_twilio_media_with_retry", new_callable=AsyncMock)
+    @patch("backend.routers.whatsapp.download_twilio_media", new_callable=AsyncMock)
+    @patch("backend.routers.whatsapp.download_from_s3")
+    def test_reply_only_assigns_current_batch_not_stale(
+        self,
+        mock_download_s3,
+        mock_download_twilio,
+        mock_delete_twilio,
+        mock_strip,
+        mock_upload,
+        mock_delete_s3,
+        mock_consent,
+        mock_resolver,
+        setup_db,
+    ):
+        """Stale pending photos from a previous abandoned batch must not get
+        captioned with the new batch's reply."""
+        db = setup_db
+        center = db.query(Center).first()
+        teacher = db.query(Teacher).first()
+
+        # Stale pending photo, well before the new batch starts.
+        stale = PendingPhoto(
+            id=uuid.uuid4(),
+            center_id=center.id,
+            teacher_id=teacher.id,
+            s3_temp_key="pending/stale.jpg",
+            content_type="image/jpeg",
+            expires_at=datetime.now(UTC) + timedelta(minutes=25),
+        )
+        db.add(stale)
+        db.commit()
+        # Force created_at to be older than the upcoming batch.
+        stale.created_at = datetime.now(UTC) - timedelta(minutes=10)
+        db.commit()
+
+        mock_download_twilio.return_value = (b"raw", "image/jpeg")
+        mock_strip.return_value = b"clean"
+        mock_download_s3.return_value = b"clean"
+        mock_consent.return_value = MagicMock()
+        mock_resolver.return_value = _ctx(child_names=["Clara"])
+
+        # New batch: 1 fresh photo.
+        client.post(
+            "/webhook/whatsapp",
+            data={
+                "From": "+15550001111",
+                "Body": "",
+                "NumMedia": "1",
+                "MediaUrl0": "https://api.twilio.com/x.jpg",
+                "MediaContentType0": "image/jpeg",
+            },
+        )
+
+        # Teacher replies. Only the fresh photo should be assigned to Clara —
+        # the stale one stays pending (will be GC'd by the 30-min TTL job).
+        resp = client.post(
+            "/webhook/whatsapp",
+            data={
+                "From": "+15550001111",
+                "Body": "Clara at the table",
+                "NumMedia": "0",
+            },
+        )
+        assert resp.status_code == 200
+        assert "Saved 1 photo(s) for Clara" in resp.text
+        # 1 final Photo row, stale pending row preserved.
+        assert db.query(Photo).count() == 1
+        assert db.query(PendingPhoto).count() == 1
+        assert db.query(PendingPhoto).first().s3_temp_key == "pending/stale.jpg"
+
+    @patch("backend.routers.whatsapp.upload_photo")
+    @patch("backend.routers.whatsapp.strip_exif")
+    @patch("backend.routers.whatsapp.delete_twilio_media_with_retry", new_callable=AsyncMock)
+    @patch("backend.routers.whatsapp.download_twilio_media", new_callable=AsyncMock)
     def test_consecutive_bare_photos_only_prompt_once(
         self, mock_download, mock_delete_twilio, mock_strip, mock_upload, setup_db
     ):

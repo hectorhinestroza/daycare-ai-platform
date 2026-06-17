@@ -354,6 +354,30 @@ def _resolve_room_roster(db: Session, sender, is_director: bool) -> list:
     return q.filter(Child.room_id.in_(room_ids)).all()
 
 
+def _normalize_dt(dt):
+    """SQLite drops tzinfo on round-trip; Postgres keeps it. Force naive UTC
+    on both sides for comparison so the same code works in tests and prod.
+    """
+    if dt is None:
+        return None
+    return dt.replace(tzinfo=None) if dt.tzinfo is not None else dt
+
+
+def _filter_pending_since(pending_photos: list, anchor):
+    """Drop pending rows older than `anchor` (used to scope a teacher's
+    pending photos to the current upload batch, ignoring stale leftovers
+    from earlier unresolved batches).
+    """
+    if anchor is None:
+        return list(pending_photos)
+    cutoff = _normalize_dt(anchor)
+    return [p for p in pending_photos if _normalize_dt(p.created_at) >= cutoff]
+
+
+def _count_pending_since(db: Session, teacher_id, anchor) -> int:
+    return len(_filter_pending_since(get_pending_photos_by_teacher(db, teacher_id), anchor))
+
+
 def _consent_filter(db: Session, center_id, children: list, environment: str) -> list:
     """Drop children without active parental consent (Phase 2 gate)."""
     consenting = []
@@ -743,7 +767,12 @@ async def whatsapp_webhook(
 
             # 1.5 If the teacher has pending photos waiting for context, try
             # treating this voice note as the assignment reply first.
-            pending_photos = [] if is_director else get_pending_photos_by_teacher(db, sender.id)
+            # Scope to the current upload batch so a reply addresses only the
+            # photos the teacher just sent — not stale leftovers from earlier.
+            pending_photos = [] if is_director else _filter_pending_since(
+                get_pending_photos_by_teacher(db, sender.id),
+                cmd_context.get("pending_prompt_at"),
+            )
             photo_reply = await _try_photo_context_followup(
                 db, sender, is_director, pending_photos,
                 message=transcript,
@@ -797,7 +826,12 @@ async def whatsapp_webhook(
 
             # 4.1 Photo-context follow-up: if there are pending photos awaiting
             # assignment, treat this text as the names/group reply first.
-            pending_photos = [] if is_director else get_pending_photos_by_teacher(db, sender.id)
+            # Scope to the current upload batch so a reply addresses only the
+            # photos the teacher just sent — not stale leftovers from earlier.
+            pending_photos = [] if is_director else _filter_pending_since(
+                get_pending_photos_by_teacher(db, sender.id),
+                cmd_context.get("pending_prompt_at"),
+            )
             photo_reply = await _try_photo_context_followup(
                 db, sender, is_director, pending_photos,
                 message=body,
@@ -932,7 +966,20 @@ async def whatsapp_webhook(
                     "the whole center."
                 )
 
-            expires_at = datetime.now(UTC) + timedelta(minutes=30)
+            # Capture the batch boundary BEFORE inserting so our own rows
+            # land at created_at >= batch_start and stale leftovers from a
+            # previous (unresolved) batch don't inflate the count.
+            batch_start = datetime.now(UTC)
+            last_prompt_at = cmd_context.get("pending_prompt_at")
+            within_active_batch = (
+                last_prompt_at
+                and (batch_start - last_prompt_at).total_seconds() < PENDING_PROMPT_DEBOUNCE_S
+            )
+            # The anchor used both here for the count and later by the
+            # follow-up reply to scope photos to this batch only.
+            count_anchor = last_prompt_at if within_active_batch else batch_start
+
+            expires_at = batch_start + timedelta(minutes=30)
             for clean_bytes in clean_photos:
                 s3_temp_key = build_pending_s3_key(sender.center_id, sender.id)
                 upload_photo(clean_bytes, s3_temp_key)
@@ -946,23 +993,19 @@ async def whatsapp_webhook(
                     expires_at=expires_at,
                 )
 
-            # Debounce: a WhatsApp gallery upload of N photos becomes N
-            # webhooks. We already prompted the teacher on the first one —
-            # subsequent ones in the same batch should be silent.
-            now = datetime.now(UTC)
-            last_prompt_at = cmd_context.get("pending_prompt_at")
-            if last_prompt_at and (now - last_prompt_at).total_seconds() < PENDING_PROMPT_DEBOUNCE_S:
+            if within_active_batch:
+                # Sibling webhook in the same gallery upload — stay silent.
                 return _build_empty_twiml()
 
-            # Claim the prompt slot BEFORE the coalesce sleep so concurrent
-            # sibling webhooks see the timestamp and stay silent.
-            _set_command_context(phone, pending_prompt_at=now)
+            # First webhook of a new batch. Claim the prompt slot BEFORE the
+            # coalesce sleep so concurrent siblings see the timestamp.
+            _set_command_context(phone, pending_prompt_at=batch_start)
             if PHOTO_BATCH_COALESCE_S > 0:
                 await asyncio.sleep(PHOTO_BATCH_COALESCE_S)
 
-            total_pending = len(get_pending_photos_by_teacher(db, sender.id))
+            batch_count = _count_pending_since(db, sender.id, count_anchor)
             prompt = (
-                f"📷 Got {total_pending} photo(s). Reply (text or voice note) "
+                f"📷 Got {batch_count} photo(s). Reply (text or voice note) "
                 "with who's in them and what's happening — e.g. \"Clara and "
                 "Emi building a tower\" or \"everyone eating snack.\" I'll "
                 "save your description as the caption for parents."
