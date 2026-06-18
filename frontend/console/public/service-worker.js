@@ -13,14 +13,52 @@
 //   this same-origin response just fine.
 //
 // Token lifecycle inside the SW:
-//   - Held in a module-level variable (in-memory).
+//   - Held in a module-level variable (in-memory) for the fast path.
 //   - Set via postMessage from the page on every load (idempotent).
-//   - If the SW restarts (rare, but possible after long idle), the next
-//     page load re-sends the token before any "Add to Home Screen" tap.
+//   - ALSO persisted to the Cache API so it survives SW termination.
+//     iOS WebKit kills idle service workers within seconds. The page posts
+//     the token on load, but iOS reads /manifest.json at the moment the
+//     user taps Share → Add to Home Screen — which is NOT a page load and
+//     can happen long after. If the SW was evicted in between, the in-memory
+//     token is gone and we'd bake a token-less start_url into the icon,
+//     producing the "Access link expired" screen on every launch. Reading
+//     the token back from durable storage closes that gap. (SWs have no
+//     access to localStorage/sessionStorage, so the Cache API is the store.)
 
 let cachedToken = null;
 
 const STATIC_FALLBACK_START_URL = '/app?source=pwa';
+
+// Durable token store. The Cache API is the only persistent key/value store
+// available inside a service worker. We stash the token as the body of a
+// Response under a synthetic same-origin request key.
+const TOKEN_CACHE = 'raina-auth-v1';
+const TOKEN_CACHE_KEY = '/__token__';
+
+async function persistToken(token) {
+  try {
+    const cache = await caches.open(TOKEN_CACHE);
+    if (token) {
+      await cache.put(TOKEN_CACHE_KEY, new Response(token));
+    } else {
+      await cache.delete(TOKEN_CACHE_KEY);
+    }
+  } catch {
+    /* storage unavailable (private mode, quota) — fall back to in-memory */
+  }
+}
+
+async function loadPersistedToken() {
+  try {
+    const cache = await caches.open(TOKEN_CACHE);
+    const res = await cache.match(TOKEN_CACHE_KEY);
+    if (!res) return null;
+    const token = await res.text();
+    return token || null;
+  } catch {
+    return null;
+  }
+}
 
 const BASE_MANIFEST = {
   name: 'Raina',
@@ -61,8 +99,12 @@ self.addEventListener('message', (event) => {
   if (!data || typeof data !== 'object') return;
   if (data.type === 'SET_TOKEN' && typeof data.token === 'string') {
     cachedToken = data.token || null;
+    // waitUntil keeps the SW alive until the durable write finishes, so a
+    // race between the postMessage and an eviction can't lose the token.
+    event.waitUntil(persistToken(cachedToken));
   } else if (data.type === 'CLEAR_TOKEN') {
     cachedToken = null;
+    event.waitUntil(persistToken(null));
   }
 });
 
@@ -91,7 +133,9 @@ async function hashToken(token) {
 }
 
 async function buildManifestResponse() {
-  const token = cachedToken;
+  // Prefer the in-memory token; fall back to the durable copy when the SW
+  // was restarted since the page last posted it (the iOS eviction case).
+  const token = cachedToken || (await loadPersistedToken());
   let id = '/';                              // default for the no-token fallback
   let startUrl = STATIC_FALLBACK_START_URL;
 
