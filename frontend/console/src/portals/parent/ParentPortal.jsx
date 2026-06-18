@@ -110,12 +110,14 @@ export default function ParentPortal({ centerId, childId }) {
   const [photos, setPhotos] = useState([]);
   const [narrative, setNarrative] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
 
   // Narrative is ONLY set by the scheduler (5 PM) or a director manually triggering
   // generate-all. The parent portal never auto-generates — it polls and displays
   // whatever the backend has already produced.
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (isManual = false) => {
+    if (isManual) setRefreshing(true);
     try {
       const today = todayDateString();
       const [childData, feedData, narrativeData, photosData] = await Promise.all([
@@ -133,12 +135,15 @@ export default function ParentPortal({ centerId, childId }) {
       setError(err.message);
     } finally {
       setLoading(false);
+      if (isManual) {
+        setTimeout(() => setRefreshing(false), 600);
+      }
     }
   }, [centerId, childId]);
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 10000);
+    const interval = setInterval(() => loadData(false), 10000);
     return () => clearInterval(interval);
   }, [loadData]);
 
@@ -178,11 +183,12 @@ export default function ParentPortal({ centerId, childId }) {
             <p className="text-xs text-on-surface-variant">Live Updates</p>
           </div>
           <button
-            onClick={loadData}
-            className="text-primary hover:opacity-70 transition-opacity"
+            onClick={() => loadData(true)}
+            disabled={refreshing || loading}
+            className={`text-primary hover:opacity-70 transition-opacity ${(refreshing || loading) ? 'opacity-50 cursor-not-allowed' : ''}`}
             title="Refresh"
           >
-            <span className="material-symbols-outlined">sync_alt</span>
+            <span className={`material-symbols-outlined block ${refreshing ? 'animate-spin' : ''}`}>sync_alt</span>
           </button>
         </div>
       </header>
