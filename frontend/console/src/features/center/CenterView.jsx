@@ -11,7 +11,11 @@ const SUB_TABS = [
 ];
 
 export default function CenterView({ centerId, addToast }) {
-  const [subView, setSubView] = useState('children');
+  const [subView, setSubViewState] = useState(() => sessionStorage.getItem('raina_console_center_subview') || 'children');
+  const setSubView = (newSubView) => {
+    setSubViewState(newSubView);
+    sessionStorage.setItem('raina_console_center_subview', newSubView);
+  };
   const [rooms, setRooms] = useState([]);
   const [teachers, setTeachers] = useState([]);
   const [loading, setLoading] = useState(true);

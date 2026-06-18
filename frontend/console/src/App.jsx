@@ -25,7 +25,11 @@ function App({ forcedRole, centerId: propscenterId }) {
   // fallback for dev mode where the dispatcher never ran.
   const initialRole = forcedRole || getCachedRole() || 'teacher';
   const [role] = useState(initialRole);
-  const [view, setView] = useState('pending');
+  const [view, setViewState] = useState(() => sessionStorage.getItem('raina_console_active_view') || 'pending');
+  const setView = (newView) => {
+    setViewState(newView);
+    sessionStorage.setItem('raina_console_active_view', newView);
+  };
   const [toasts, setToasts] = useState([]);
   const [profile, setProfile] = useState({ centerName: '', userName: '' });
 
