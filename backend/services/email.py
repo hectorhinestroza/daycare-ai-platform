@@ -98,6 +98,85 @@ async def send_consent_email(
         return False
 
 
+async def send_parent_welcome_email(
+    to_email: str,
+    parent_name: str,
+    child_name: str,
+    center_name: str,
+    portal_url: str,
+) -> bool:
+    """Send the welcome-to-the-portal email after consent is granted.
+
+    Fires from `submit_consent()` after we activate the child and mint a
+    parent bearer token. The `portal_url` is the bootstrap URL the parent
+    can bookmark / add to home screen — it carries a 1-year token scoped
+    to this one child.
+    """
+    settings = get_settings()
+
+    if not settings.resend_api_key:
+        logger.warning(
+            f"RESEND_API_KEY not set — logging welcome email instead.\n"
+            f"  To: {to_email}\n"
+            f"  Portal URL: {portal_url}"
+        )
+        return False
+
+    subject = f"{center_name} — {child_name}'s daily updates are ready 🌿"
+
+    html_body = f"""
+    <div style="font-family: 'Inter', -apple-system, sans-serif; max-width: 520px; margin: 0 auto; padding: 40px 24px; color: #1a1a1a;">
+      <h2 style="font-size: 22px; font-weight: 600; margin-bottom: 8px;">Thanks, {parent_name} 🌿</h2>
+      <p style="color: #666; font-size: 15px; line-height: 1.6; margin-bottom: 24px;">
+        {child_name}'s enrollment is complete and the parent portal is now live for your family.
+      </p>
+      <p style="font-size: 15px; line-height: 1.6; margin-bottom: 32px;">
+        Throughout the day you'll see real-time updates from {child_name}'s teachers — meals, naps, photos, and a daily recap at the end of the day.
+      </p>
+      <a href="{portal_url}"
+         style="display: inline-block; background: #2d6a4f; color: white; text-decoration: none;
+                padding: 14px 32px; border-radius: 8px; font-size: 15px; font-weight: 600;">
+        Open {child_name}'s Portal →
+      </a>
+      <p style="color: #666; font-size: 13px; line-height: 1.6; margin-top: 28px;">
+        <strong>Tip:</strong> bookmark this link or add it to your phone's home screen so you can come back with one tap. The link is private to you — please don't share it.
+      </p>
+      <p style="color: #999; font-size: 12px; margin-top: 32px; line-height: 1.5;">
+        Questions? Reply to this email or reach out to {center_name} directly.
+        <br>— The Raina Team
+      </p>
+    </div>
+    """
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                RESEND_API_URL,
+                headers={
+                    "Authorization": f"Bearer {settings.resend_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "from": settings.resend_from_email,
+                    "to": [to_email],
+                    "subject": subject,
+                    "html": html_body,
+                },
+                timeout=10.0,
+            )
+
+        if resp.status_code in (200, 201):
+            logger.info(f"Parent welcome email sent to {to_email} for child {child_name}")
+            return True
+        else:
+            logger.error(f"Resend API error {resp.status_code}: {resp.text}")
+            return False
+
+    except Exception as e:
+        logger.error(f"Failed to send welcome email to {to_email}: {e}")
+        return False
+
+
 async def send_email(
     to: str,
     subject: str,

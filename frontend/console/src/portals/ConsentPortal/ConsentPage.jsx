@@ -84,7 +84,7 @@ export default function ConsentPage({ token }) {
         </div>
         <h2 className="font-headline text-3xl font-semibold mb-3 text-on-surface tracking-tight">You're all set!</h2>
         <p className="text-on-surface-variant text-base max-w-sm mx-auto leading-relaxed">
-          Thank you for completing the setup for <span className="font-medium text-on-surface">{details?.child_first_name || 'your child'}</span>. You can now close this window or return to the Parent Portal.
+          Thanks for completing the setup for <span className="font-medium text-on-surface">{details?.child_first_name || 'your child'}</span>. Check your inbox — we just sent you a private link to {details?.child_first_name ? `${details.child_first_name}'s` : 'the'} Parent Portal.
         </p>
       </div>
     );
