@@ -288,3 +288,29 @@ class TestExtractEvents:
         assert len(events) == 1
         assert events[0].confidence_score == 0.5
         assert events[0].review_tier == "director"  # 0.5 < 0.7 threshold
+
+    @pytest.mark.asyncio
+    @patch("backend.services.extraction.get_openai_client")
+    async def test_verbatim_child_name_rule_in_system_prompt(self, mock_get_client):
+        """Regression: a teacher sent the text 'Loie is playing' and GPT-4o
+        emitted child_name='Doie' — substituting an unusual name for a
+        phonetic neighbour. The system prompt now carries an explicit rule
+        against this, with 'Loie' as a positive example. Lock both in so a
+        future prompt edit can't silently drop the safeguard.
+        """
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        mock_response = MagicMock()
+        mock_response.choices[0].message.content = json.dumps({"events": []})
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+        await extract_events("any text", "c1", db=MagicMock())
+
+        call_kwargs = mock_client.chat.completions.create.call_args
+        system_msg = call_kwargs.kwargs["messages"][0]["content"]
+        # The rule must be present and must not be paraphrased away.
+        assert "VERBATIM" in system_msg
+        assert "byte-for-byte" in system_msg
+        # The Loie positive example anchors the rule for the model.
+        assert '"Loie"' in system_msg

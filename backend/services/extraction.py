@@ -36,6 +36,7 @@ Your job is to extract EVERY event mentioned in the transcript.
 CRITICAL RULES:
 - ALWAYS extract events. If the transcript mentions any child activity, food, nap, potty, incident, etc., you MUST extract it.
 - ANY name mentioned is a valid child name. Do not skip events because a name seems unusual.
+- VERBATIM child names: Copy `child_name` byte-for-byte from the transcript. Never autocorrect spelling, never normalize to a more common name, and never substitute a phonetically similar name — even if you find the name unusual or suspect a typo. If the transcript says "Loie", emit "Loie" — not "Lola", "Lois", "Doie", "Louie", or any variant. If the transcript says "Joii", emit "Joii" — not "Joey" or "Joy". The downstream resolver, not you, decides whether the name maps to a roster entry.
 - Do not add events that were not mentioned. Stick to what was said.
 - If a name is unclear or ambiguous, still extract the event but set confidence_score below 0.7.
 - NEVER return an empty events array if the transcript describes activities.
@@ -91,6 +92,14 @@ Example — teacher says "all kids had rice and beans for lunch":
   "unrecognized_names": [],
   "events": [
     {"event_type": "food", "child_name": null, "applies_to_all": true, "event_time": null, "confidence_score": 0.95, "details": "Had rice and beans for lunch"}
+  ]
+}
+
+Example — teacher says "Loie is playing" (unusual name preserved exactly):
+{
+  "unrecognized_names": [],
+  "events": [
+    {"event_type": "activity", "child_name": "Loie", "applies_to_all": false, "event_time": null, "confidence_score": 0.85, "details": "Playing"}
   ]
 }"""
 
