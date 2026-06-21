@@ -11,7 +11,6 @@ export default function ConsentPage({ token }) {
   const [reports, setReports] = useState(false);
   const [photos, setPhotos] = useState(false);
   const [audio, setAudio] = useState(false);
-  const [billing, setBilling] = useState(false);
   const [signature, setSignature] = useState('');
   
   const [submitting, setSubmitting] = useState(false);
@@ -30,7 +29,7 @@ export default function ConsentPage({ token }) {
     load();
   }, [token]);
 
-  const isValid = reports && photos && audio && billing && signature.trim().length > 2;
+  const isValid = reports && photos && audio && signature.trim().length > 2;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -43,7 +42,7 @@ export default function ConsentPage({ token }) {
         consent_daily_reports: reports,
         consent_photos: photos,
         consent_audio_processing: audio,
-        consent_billing_data: billing,
+        consent_billing_data: true,
         digital_signature: signature.trim()
       });
       setSubmitted(true);
@@ -158,13 +157,7 @@ export default function ConsentPage({ token }) {
                 title="Audio Processing"
                 desc="I consent to the processing of teacher voice memos by Raina to structure updates. I understand these are never used for AI training and are deleted immediately after processing."
               />
-              <Checkbox 
-                id="billing" 
-                checked={billing} 
-                onChange={setBilling}
-                title="Billing & Attendance"
-                desc="I consent to the tracking of attendance and billing-related events (e.g. late pickups) strictly for invoicing purposes by the center."
-              />
+
             </div>
 
             {/* Signature Section */}
