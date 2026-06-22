@@ -273,7 +273,7 @@ export default function DirectorHistoryView({ centerId }) {
               <select
                 value={selectedFilter}
                 onChange={(e) => setSelectedFilter(e.target.value)}
-                className="bg-surface-container text-on-surface text-sm rounded-full px-4 py-2 border border-outline-variant/20 outline-none focus:border-outline-variant/50 transition-colors cursor-pointer min-w-[160px]"
+                className="bg-surface-container text-on-surface text-sm rounded-full px-4 py-2 border border-outline-variant/20 outline-none focus:border-outline-variant/50 transition-colors cursor-pointer w-48"
               >
                 <option value="">{groupBy === 'child' ? 'All Children' : 'All Teachers'}</option>
                 {filterOptions.map((name) => (
