@@ -12,6 +12,8 @@ const EVENT_META = {
   observation:  { icon: 'visibility',        accentClass: 'bg-tertiary-fixed' },
   health_check: { icon: 'stethoscope',       accentClass: 'bg-surface-container-high' },
   absence:      { icon: 'event_busy',        accentClass: 'bg-surface-container-high' },
+  check_in:     { icon: 'login',             accentClass: 'bg-primary-container' },
+  check_out:    { icon: 'logout',            accentClass: 'bg-surface-container-high' },
   note:         { icon: 'sticky_note_2',     accentClass: 'bg-tertiary-fixed' },
 };
 
