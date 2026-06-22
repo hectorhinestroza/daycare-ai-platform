@@ -40,6 +40,7 @@ from backend.storage.events_handlers import (
 )
 from backend.storage.models import Admin, Center as CenterModel, Event
 from backend.storage.narrative_handlers import get_narrative, upsert_narrative
+from backend.routers.photos import PhotoOut
 
 logger = logging.getLogger(__name__)
 
@@ -179,6 +180,7 @@ class EventOut(BaseModel):
     applies_to_all: bool = False
     batch_id: Optional[UUID] = None
     teacher_name: Optional[str] = None
+    photos: List[PhotoOut] = []
 
     model_config = {"from_attributes": True}
 
@@ -271,6 +273,7 @@ def list_event_history(
         EventOut.model_validate({
             **{c.key: getattr(e, c.key) for c in e.__table__.columns},
             "teacher_name": _resolve_event_teacher_name(e, db),
+            "photos": e.photos,
         })
         for e in events
     ]

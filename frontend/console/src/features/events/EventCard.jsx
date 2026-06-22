@@ -122,6 +122,19 @@ export default function EventCard({ event, onAction, readOnly = false }) {
               <p className="text-lg text-on-surface leading-snug">
                 {event.details || 'No details'}
               </p>
+              {event.photos && event.photos.length > 0 && (
+                <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {event.photos.map((photo) => (
+                    <div key={photo.id} className="relative aspect-[4/3] rounded-lg overflow-hidden bg-surface-container shadow-ambient group">
+                      <img
+                        src={photo.s3_url}
+                        alt={photo.caption || 'Event attachment'}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
               {!isLowConfidence && (
                 <div className="mt-3">
                   <span className="bg-secondary-fixed text-on-secondary-fixed-variant text-[10px] font-bold px-2 py-1 rounded-sm uppercase tracking-tighter">

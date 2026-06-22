@@ -326,6 +326,11 @@ class Photo(Base):
 
     event = relationship("Event", back_populates="photos")
 
+    @property
+    def s3_url(self) -> str | None:
+        from backend.utils.s3 import generate_presigned_url
+        return generate_presigned_url(self.s3_key) if self.s3_key else None
+
 
 # ─── Pending Photos ──────────────────────────────────────────
 
