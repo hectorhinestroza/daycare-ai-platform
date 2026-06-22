@@ -169,7 +169,7 @@ export default function ParentPortal({ centerId, childId }) {
   const dayGroups = groupByDate(events, photos);
 
   return (
-    <div className="min-h-screen bg-surface">
+    <div className="min-h-screen bg-surface flex flex-col">
       {/* Header */}
       <header className="bg-surface/80 backdrop-blur-xl fixed top-0 w-full z-50 px-6 py-4">
         <div className="max-w-2xl mx-auto flex items-center gap-3">
@@ -194,7 +194,7 @@ export default function ParentPortal({ centerId, childId }) {
       </header>
 
       {/* Content */}
-      <main className="pt-24 pb-12 px-6 max-w-2xl mx-auto">
+      <main className="pt-24 pb-12 px-6 max-w-2xl mx-auto flex-1 w-full">
         {error && (
           <div className="mb-6 flex items-center justify-between bg-error-container text-on-error-container px-4 py-3 rounded-lg">
             <span className="text-sm">{error}</span>
@@ -264,7 +264,7 @@ export default function ParentPortal({ centerId, childId }) {
 
       {/* Privacy policy footer — COPPA requires the link be reachable
           from every parent-facing page. */}
-      <footer className="pb-8 px-6 max-w-2xl mx-auto text-center">
+      <footer className="pb-8 px-6 max-w-2xl mx-auto text-center w-full">
         <a
           href="/privacy"
           className="text-xs text-on-surface-variant/70 hover:text-on-surface-variant underline"

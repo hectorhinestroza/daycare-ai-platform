@@ -30,7 +30,7 @@ const SECTIONS = [
       <ul className="list-disc pl-6 space-y-1">
         <li>Generating daily reports for you to read in this portal</li>
         <li>Sharing real-time updates from the classroom</li>
-        <li>Billing and invoicing for childcare services</li>
+        {/* <li>Billing and invoicing for childcare services</li> */}
         <li>Maintaining a compliance audit trail required by childcare regulations</li>
       </ul>
     ),
@@ -101,7 +101,7 @@ export default function PrivacyPolicy() {
           Privacy Policy
         </h1>
         <p className="text-sm text-on-surface-variant mb-8">
-          Last updated: May 2026 — <span className="italic">draft pending legal review</span>
+          Last updated: May 2026
         </p>
 
         <div className="space-y-8 text-on-surface leading-relaxed">
