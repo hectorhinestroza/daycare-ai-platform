@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     # Resend (transactional email)
     resend_api_key: str = ""
     resend_from_email: str = "Raina <onboarding@raina-pilot.com>"
+    # Where Gmail's "Reply" button on parent emails should route to. Leave
+    # empty to omit the Reply-To header (replies then go to from-address,
+    # which is unmonitored). Set in Railway to a real inbox (yours during
+    # the pilot, the daycare director's later).
+    resend_reply_to_email: str = ""
 
     # App base URL (used for magic links — no trailing slash)
     app_base_url: str = "http://localhost:5173"

@@ -16,6 +16,32 @@ logger = logging.getLogger(__name__)
 RESEND_API_URL = "https://api.resend.com/emails"
 
 
+def _build_payload(
+    *,
+    to_email: str,
+    subject: str,
+    html_body: str,
+    from_override: Optional[str] = None,
+) -> dict:
+    """Shape the Resend POST body, including reply_to when configured.
+
+    Resend takes `reply_to` as a list of strings on the email payload.
+    Wiring it from settings (rather than hardcoding) means we can point
+    parent replies at the pilot operator now and at the daycare director
+    later, with just an env-var flip.
+    """
+    settings = get_settings()
+    payload: dict = {
+        "from": from_override or settings.resend_from_email,
+        "to": [to_email],
+        "subject": subject,
+        "html": html_body,
+    }
+    if settings.resend_reply_to_email:
+        payload["reply_to"] = [settings.resend_reply_to_email]
+    return payload
+
+
 async def send_consent_email(
     to_email: str,
     parent_name: str,
@@ -77,12 +103,11 @@ async def send_consent_email(
                     "Authorization": f"Bearer {settings.resend_api_key}",
                     "Content-Type": "application/json",
                 },
-                json={
-                    "from": settings.resend_from_email,
-                    "to": [to_email],
-                    "subject": subject,
-                    "html": html_body,
-                },
+                json=_build_payload(
+                    to_email=to_email,
+                    subject=subject,
+                    html_body=html_body,
+                ),
                 timeout=10.0,
             )
 
@@ -156,12 +181,11 @@ async def send_parent_welcome_email(
                     "Authorization": f"Bearer {settings.resend_api_key}",
                     "Content-Type": "application/json",
                 },
-                json={
-                    "from": settings.resend_from_email,
-                    "to": [to_email],
-                    "subject": subject,
-                    "html": html_body,
-                },
+                json=_build_payload(
+                    to_email=to_email,
+                    subject=subject,
+                    html_body=html_body,
+                ),
                 timeout=10.0,
             )
 
@@ -198,12 +222,12 @@ async def send_email(
                     "Authorization": f"Bearer {settings.resend_api_key}",
                     "Content-Type": "application/json",
                 },
-                json={
-                    "from": from_email or settings.resend_from_email,
-                    "to": [to],
-                    "subject": subject,
-                    "html": html,
-                },
+                json=_build_payload(
+                    to_email=to,
+                    subject=subject,
+                    html_body=html,
+                    from_override=from_email,
+                ),
                 timeout=10.0,
             )
 
