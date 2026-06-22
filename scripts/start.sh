@@ -7,8 +7,12 @@ echo "=== Daycare AI Platform — Starting ==="
 #   - Empty DB (no alembic_version AND no tables): create the current ORM
 #     schema, create the Postgres-only consent view, then stamp at HEAD so
 #     no migrations try to alter freshly-created tables.
-#   - Schema-only DB (no alembic_version but tables exist): legacy path —
-#     stamp at the baseline revision so subsequent migrations apply on top.
+#   - Schema-only DB (no alembic_version but tables exist): the schema was
+#     built via create_all() from the current ORM, so it already matches
+#     HEAD. Stamp at HEAD — not baseline — so we don't replay migrations
+#     that try to ADD columns/tables create_all() already produced.
+#     (Stamping at baseline was the prior bug: every alter-table migration
+#     blew up on "column already exists" on the next deploy.)
 #   - Already migrated: skip stamping; `alembic upgrade head` applies new
 #     migrations or no-ops.
 python - <<'EOF'
@@ -58,8 +62,18 @@ if "alembic_version" not in tables:
         print("Stamping alembic_version at HEAD (no migrations to replay)...")
         command.stamp(cfg, "head")
     else:
-        print(f"Found {len(tables)} tables but no alembic_version — stamping at baseline 285a346288d3...")
-        command.stamp(cfg, "285a346288d3")
+        print(f"Found {len(tables)} tables but no alembic_version — stamping at HEAD (schema was built via create_all)...")
+        # Also create the consent view if it's missing — the migration that
+        # creates it won't run because we're about to stamp past it.
+        if engine.dialect.name == "postgresql":
+            existing_views = {r[0] for r in engine.connect().execute(
+                text("SELECT table_name FROM information_schema.views WHERE table_schema = current_schema()")
+            ).fetchall()}
+            if "children_with_active_consent" not in existing_views:
+                print("Creating missing children_with_active_consent view...")
+                with engine.begin() as conn:
+                    conn.execute(text(CONSENT_VIEW_SQL))
+        command.stamp(cfg, "head")
 else:
     print("alembic_version table exists — skipping stamp")
 EOF
