@@ -6,13 +6,13 @@ export default function ConsentPage({ token }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [submitted, setSubmitted] = useState(false);
-  
+
   // Form State
   const [reports, setReports] = useState(false);
   const [photos, setPhotos] = useState(false);
   const [audio, setAudio] = useState(false);
   const [signature, setSignature] = useState('');
-  
+
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -34,7 +34,7 @@ export default function ConsentPage({ token }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!isValid) return;
-    
+
     setSubmitting(true);
     setError(null);
     try {
@@ -128,7 +128,7 @@ export default function ConsentPage({ token }) {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-6 card-appear" style={{ animationDelay: '0.1s' }}>
-            
+
             {/* Required Permissions Section */}
             <div className="glass-panel p-6 rounded-2xl shadow-ambient space-y-5">
               <div className="flex items-center gap-2 border-b border-outline-variant/30 pb-4 mb-2">
@@ -136,23 +136,23 @@ export default function ConsentPage({ token }) {
                 <h3 className="font-headline text-lg font-semibold text-on-surface">Privacy & Permissions</h3>
               </div>
 
-              <Checkbox 
-                id="reports" 
-                checked={reports} 
+              <Checkbox
+                id="reports"
+                checked={reports}
                 onChange={setReports}
                 title="Daily Reports & Logs"
                 desc={`I consent to Raina generating and storing daily reports, logs, and milestone records for ${details.child_first_name}.`}
               />
-              <Checkbox 
-                id="photos" 
-                checked={photos} 
+              <Checkbox
+                id="photos"
+                checked={photos}
                 onChange={setPhotos}
                 title="Photos & Media"
                 desc="I consent to the secure storage and processing of photos taken by teachers exclusively for sharing with me."
               />
-              <Checkbox 
-                id="audio" 
-                checked={audio} 
+              <Checkbox
+                id="audio"
+                checked={audio}
                 onChange={setAudio}
                 title="Audio Processing"
                 desc="I consent to the processing of teacher voice memos by Raina to structure updates. I understand these are never used for AI training and are deleted immediately after processing."
@@ -166,9 +166,9 @@ export default function ConsentPage({ token }) {
               <p className="text-xs text-on-surface-variant mb-4">
                 By typing your full name below, you confirm you are the parent or legal guardian of {details.child_first_name} and agree to the above terms.
               </p>
-              <input 
+              <input
                 id="signature"
-                type="text" 
+                type="text"
                 placeholder="E.g., Jane Doe"
                 className="w-full bg-surface text-on-surface px-4 py-3 rounded-xl border border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-shadow"
                 value={signature}
@@ -182,11 +182,10 @@ export default function ConsentPage({ token }) {
             <button
               type="submit"
               disabled={!isValid || submitting}
-              className={`w-full py-4 rounded-xl font-semibold text-base tracking-wide transition-all duration-300 shadow-ambient flex justify-center items-center gap-2 ${
-                isValid && !submitting
+              className={`w-full py-4 rounded-xl font-semibold text-base tracking-wide transition-all duration-300 shadow-ambient flex justify-center items-center gap-2 ${isValid && !submitting
                   ? 'bg-primary text-on-primary hover:bg-primary/95 active:scale-[0.98]'
                   : 'bg-surface-container-highest text-on-surface-variant/50 cursor-not-allowed'
-              }`}
+                }`}
             >
               {submitting ? (
                 <>
@@ -197,9 +196,6 @@ export default function ConsentPage({ token }) {
                 'Accept & Complete Setup'
               )}
             </button>
-            <p className="text-center text-[10px] text-on-surface-variant uppercase tracking-widest mt-4">
-              Protected by Raina Security
-            </p>
           </form>
         </div>
       </div>
@@ -216,11 +212,10 @@ function Checkbox({ id, checked, onChange, title, desc }) {
           role="checkbox"
           aria-checked={checked}
           onClick={() => onChange(!checked)}
-          className={`w-6 h-6 rounded flex items-center justify-center transition-all ${
-            checked 
-              ? 'bg-primary border-primary text-on-primary' 
+          className={`w-6 h-6 rounded flex items-center justify-center transition-all ${checked
+              ? 'bg-primary border-primary text-on-primary'
               : 'border-2 border-outline-variant bg-surface'
-          }`}
+            }`}
         >
           {checked && <span className="material-symbols-outlined text-[18px] font-bold">check</span>}
         </button>
