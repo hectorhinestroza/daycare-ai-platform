@@ -75,7 +75,41 @@ if "alembic_version" not in tables:
                     conn.execute(text(CONSENT_VIEW_SQL))
         command.stamp(cfg, "head")
 else:
-    print("alembic_version table exists — skipping stamp")
+    # Self-heal: if a prior deploy stamped at baseline but the schema is
+    # actually post-baseline (create_all already produced columns later
+    # migrations try to ADD), advance the version pointer to HEAD so
+    # `alembic upgrade head` doesn't blow up on DuplicateColumn.
+    #
+    # Detector: the first post-baseline migration (17715d863cba) adds
+    # `activity_logs.child_id`. If that column exists but we're still
+    # stamped at baseline, every later migration will fail similarly.
+    activity_logs_cols = {c["name"] for c in inspector.get_columns("activity_logs")}
+    with engine.connect() as conn:
+        row = conn.execute(text("SELECT version_num FROM alembic_version")).fetchone()
+    current_version = row[0] if row else None
+
+    if current_version == "285a346288d3" and "child_id" in activity_logs_cols:
+        print(
+            "Detected baseline stamp but post-baseline schema — "
+            "stamping at HEAD to skip already-applied migrations"
+        )
+        # Materialize the consent view if it's missing — the migration
+        # that creates it won't replay after we stamp past it.
+        if engine.dialect.name == "postgresql":
+            with engine.connect() as conn:
+                existing_views = {
+                    r[0] for r in conn.execute(text(
+                        "SELECT table_name FROM information_schema.views "
+                        "WHERE table_schema = current_schema()"
+                    )).fetchall()
+                }
+            if "children_with_active_consent" not in existing_views:
+                print("Creating missing children_with_active_consent view...")
+                with engine.begin() as conn:
+                    conn.execute(text(CONSENT_VIEW_SQL))
+        command.stamp(cfg, "head")
+    else:
+        print(f"alembic_version table exists (current: {current_version}) — skipping stamp")
 EOF
 
 echo "Running database migrations..."
