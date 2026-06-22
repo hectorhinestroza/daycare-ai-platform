@@ -11,8 +11,8 @@ const EVENT_ICON = {
   medication: 'medication',
   mood: 'sentiment_satisfied',
   milestone: 'emoji_events',
-  pickup: 'directions_car',
-  dropoff: 'login',
+  check_in: 'login',
+  check_out: 'logout',
   note: 'sticky_note_2',
 };
 
@@ -25,8 +25,8 @@ const EVENT_COLOR = {
   medication: 'bg-[#fce4ec] text-[#c62828]',
   mood: 'bg-tertiary-fixed text-on-tertiary-fixed-variant',
   milestone: 'bg-secondary-fixed text-on-secondary-fixed-variant',
-  pickup: 'bg-surface-container-high text-on-surface-variant',
-  dropoff: 'bg-surface-container-high text-on-surface-variant',
+  check_in: 'bg-[#e8f5e9] text-[#2e7d32]',
+  check_out: 'bg-surface-container-high text-on-surface-variant',
   note: 'bg-surface-container-high text-on-surface-variant',
 };
 

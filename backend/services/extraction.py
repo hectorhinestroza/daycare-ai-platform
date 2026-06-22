@@ -64,7 +64,10 @@ containing children's personal information. Do not transcribe or quote direct
 speech from any child. Describe only the observable events narrated by the teacher.
 
 For each distinct event mentioned, extract:
-- event_type: one of "food", "nap", "potty", "kudos", "observation", "health_check", "absence", "note", "activity", "incident", "medication"
+- event_type: one of "food", "nap", "potty", "kudos", "observation", "health_check", "absence", "check_in", "check_out", "note", "activity", "incident", "medication"
+  * "check_in"  — child arriving at daycare. Phrases: "checking in {name}", "{name} arrived", "{name} dropped off", "morning drop-off for {name}".
+  * "check_out" — child leaving daycare. Phrases: "checking out {name}", "{name} picked up", "{name} left for the day", "pickup for {name}".
+  * When the teacher checks in or out MULTIPLE children in one breath ("checking in Carl and Loie this morning"), emit ONE event per child — do NOT use applies_to_all for attendance.
 - child_name: the child's name exactly as mentioned in the transcript, or null if applies_to_all=true
 - applies_to_all: true if the teacher used a group phrase ("all kids", "everyone", etc.), false otherwise
 - event_time: ISO 8601 datetime if mentioned, otherwise null
@@ -100,6 +103,23 @@ Example — teacher says "Loie is playing" (unusual name preserved exactly):
   "unrecognized_names": [],
   "events": [
     {"event_type": "activity", "child_name": "Loie", "applies_to_all": false, "event_time": null, "confidence_score": 0.85, "details": "Playing"}
+  ]
+}
+
+Example — teacher says "checking in Carl and Loie this morning" (multi-child attendance — one event per kid, NOT applies_to_all):
+{
+  "unrecognized_names": [],
+  "events": [
+    {"event_type": "check_in", "child_name": "Carl", "applies_to_all": false, "event_time": null, "confidence_score": 0.95, "details": "Checked in for the day"},
+    {"event_type": "check_in", "child_name": "Loie", "applies_to_all": false, "event_time": null, "confidence_score": 0.95, "details": "Checked in for the day"}
+  ]
+}
+
+Example — teacher says "Carlos was picked up at 5":
+{
+  "unrecognized_names": [],
+  "events": [
+    {"event_type": "check_out", "child_name": "Carlos", "applies_to_all": false, "event_time": null, "confidence_score": 0.9, "details": "Picked up at 5pm"}
   ]
 }"""
 

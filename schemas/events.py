@@ -27,6 +27,8 @@ class EventType(str, Enum):
     OBSERVATION = "observation"
     HEALTH_CHECK = "health_check"
     ABSENCE = "absence"
+    CHECK_IN = "check_in"   # "checking in Carl this morning" → arrival at daycare
+    CHECK_OUT = "check_out"  # "Loie picked up at 5" → departure
     NOTE = "note"
     ACTIVITY = "activity"  # Basketball, art, music, outdoor play, etc.
     # Tier 2 — High-stakes (always needs_review=True)
@@ -53,6 +55,8 @@ LOW_RISK_TYPES = {
     EventType.KUDOS,
     EventType.ABSENCE,
     EventType.ACTIVITY,
+    EventType.CHECK_IN,
+    EventType.CHECK_OUT,
 }
 
 # Standard ops — no special handling

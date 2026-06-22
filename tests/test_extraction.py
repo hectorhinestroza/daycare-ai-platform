@@ -291,6 +291,71 @@ class TestExtractEvents:
 
     @pytest.mark.asyncio
     @patch("backend.services.extraction.get_openai_client")
+    async def test_check_in_multi_child_extraction(self, mock_get_client):
+        """'checking in Carl and Loie this morning' → one CHECK_IN event
+        per kid (NOT applies_to_all), auto-approves like food/nap/potty."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        mock_response = MagicMock()
+        mock_response.choices[0].message.content = json.dumps({
+            "events": [
+                {
+                    "event_type": "check_in",
+                    "child_name": "Carl",
+                    "applies_to_all": False,
+                    "confidence_score": 0.95,
+                    "details": "Checked in for the day",
+                },
+                {
+                    "event_type": "check_in",
+                    "child_name": "Loie",
+                    "applies_to_all": False,
+                    "confidence_score": 0.95,
+                    "details": "Checked in for the day",
+                },
+            ]
+        })
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+        events, _ = await extract_events(
+            "checking in Carl and Loie this morning", "c1", db=MagicMock()
+        )
+
+        assert len(events) == 2
+        assert {e.child_name for e in events} == {"Carl", "Loie"}
+        assert all(e.event_type == EventType.CHECK_IN for e in events)
+        # High-confidence + teacher tier → auto-approve eligible
+        assert all(e.review_tier == "teacher" for e in events)
+        assert all(e.needs_director_review is False for e in events)
+        assert all(e.applies_to_all is False for e in events)
+
+    @pytest.mark.asyncio
+    @patch("backend.services.extraction.get_openai_client")
+    async def test_check_out_event(self, mock_get_client):
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.choices[0].message.content = json.dumps({
+            "events": [{
+                "event_type": "check_out",
+                "child_name": "Carlos",
+                "applies_to_all": False,
+                "confidence_score": 0.9,
+                "details": "Picked up at 5pm",
+            }]
+        })
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+        events, _ = await extract_events("Carlos was picked up at 5", "c1", db=MagicMock())
+
+        assert len(events) == 1
+        assert events[0].event_type == EventType.CHECK_OUT
+        assert events[0].child_name == "Carlos"
+        assert events[0].review_tier == "teacher"
+
+    @pytest.mark.asyncio
+    @patch("backend.services.extraction.get_openai_client")
     async def test_verbatim_child_name_rule_in_system_prompt(self, mock_get_client):
         """Regression: a teacher sent the text 'Loie is playing' and GPT-4o
         emitted child_name='Doie' — substituting an unusual name for a
