@@ -88,9 +88,16 @@ else:
         row = conn.execute(text("SELECT version_num FROM alembic_version")).fetchone()
     current_version = row[0] if row else None
 
-    if current_version == "285a346288d3" and "child_id" in activity_logs_cols:
+    # Trigger heal when the schema is past baseline but alembic doesn't
+    # know it. Covers two prod states we've seen:
+    #   1. version_num="285a346288d3" — stamped at baseline, schema beyond it
+    #   2. version_num=None — alembic_version table exists but is empty
+    #      (alembic treats this as un-stamped and replays from baseline)
+    schema_past_baseline = "child_id" in activity_logs_cols
+    drifted = current_version in (None, "285a346288d3")
+    if schema_past_baseline and drifted:
         print(
-            "Detected baseline stamp but post-baseline schema — "
+            f"Detected post-baseline schema with version_num={current_version!r} — "
             "stamping at HEAD to skip already-applied migrations"
         )
         # Materialize the consent view if it's missing — the migration
