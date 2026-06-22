@@ -142,7 +142,7 @@ async def send_parent_welcome_email(
         <strong>Tip:</strong> bookmark this link or add it to your phone's home screen so you can come back with one tap. The link is private to you — please don't share it.
       </p>
       <p style="color: #999; font-size: 12px; margin-top: 32px; line-height: 1.5;">
-        Questions? Reply to this email or reach out to {center_name} directly.
+        Questions? Reach out to {center_name} directly.
         <br>— The Raina Team
       </p>
     </div>
@@ -166,7 +166,9 @@ async def send_parent_welcome_email(
             )
 
         if resp.status_code in (200, 201):
-            logger.info(f"Parent welcome email sent to {to_email} for child {child_name}")
+            logger.info(
+                f"Parent welcome email sent to {to_email} for child {child_name}"
+            )
             return True
         else:
             logger.error(f"Resend API error {resp.status_code}: {resp.text}")
