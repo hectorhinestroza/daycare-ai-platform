@@ -66,7 +66,7 @@ const SECTIONS = [
       <ul className="list-disc pl-6 space-y-1">
         <li>Voice recordings — deleted immediately after transcription (zero retention)</li>
         <li>Photos — deleted 90 days after capture</li>
-        <li>Event records, daily narratives, billing records — retained for the duration of enrollment plus 7 years for compliance/audit purposes</li>
+        <li>Event records, daily narratives — retained for the duration of enrollment plus 7 years for compliance/audit purposes</li>
         <li>Consent records — retained indefinitely as required by COPPA</li>
       </ul>
     ),
@@ -77,8 +77,7 @@ const SECTIONS = [
       <p>
         To request deletion of your child's information, contact us at the email
         below. We will confirm receipt within 5 business days and complete
-        deletion within 30 days, subject to legal-hold exceptions for billing
-        and compliance records.
+        deletion within 30 days, subject to legal-hold exceptions and compliance records.
       </p>
     ),
   },
@@ -101,7 +100,7 @@ export default function PrivacyPolicy() {
           Privacy Policy
         </h1>
         <p className="text-sm text-on-surface-variant mb-8">
-          Last updated: May 2026
+          Last updated: June 2026
         </p>
 
         <div className="space-y-8 text-on-surface leading-relaxed">
@@ -114,7 +113,7 @@ export default function PrivacyPolicy() {
         </div>
 
         <footer className="mt-12 pt-6 border-t border-outline-variant/20 text-xs text-on-surface-variant/70">
-          This policy is provided for the pilot launch and complies with the
+          This policy compliant with the
           Children's Online Privacy Protection Act (COPPA) as required by
           the FTC's amended rule effective April 22, 2026. It will be
           reviewed annually and after any material change in data handling.
